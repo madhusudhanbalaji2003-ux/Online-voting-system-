@@ -8,7 +8,6 @@ import base64
 import io
 import os
 import pickle
-import urllib.request
 
 import cv2
 import numpy as np
@@ -19,25 +18,18 @@ FACE_MATCH_TOLERANCE = 1.128  # SFace L2 distance threshold
 EAR_THRESHOLD = 0.21
 BLINK_CONSEC_FRAMES = 2
 
-# OpenCV Face Recognition Models Setup
-YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-SFACE_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
-
+# OpenCV Face Recognition Models — bundled with the project (no download needed)
 YUNET_PATH = os.path.join(os.path.dirname(__file__), "face_detection_yunet.onnx")
 SFACE_PATH = os.path.join(os.path.dirname(__file__), "face_recognition_sface.onnx")
 
-def download_model(url, path):
-    if not os.path.exists(path):
-        print(f"Downloading {os.path.basename(path)}... This may take a moment.")
-        urllib.request.urlretrieve(url, path)
-        print("Download complete.")
-
-download_model(YUNET_URL, YUNET_PATH)
-download_model(SFACE_URL, SFACE_PATH)
-
 try:
-    detector = cv2.FaceDetectorYN.create(YUNET_PATH, "", (320, 320))
-    recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
+    if os.path.exists(YUNET_PATH) and os.path.exists(SFACE_PATH):
+        detector = cv2.FaceDetectorYN.create(YUNET_PATH, "", (320, 320))
+        recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
+    else:
+        print("Warning: Face model files not found. Face recognition will be disabled.")
+        detector = None
+        recognizer = None
 except Exception as e:
     print(f"Error loading OpenCV Face models: {e}")
     detector = None

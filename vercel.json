@@ -1,11 +1,11 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "app.py",
-      "use": "@vercel/python"
+  "functions": {
+    "app.py": {
+      "runtime": "vercel-python@3.0.7",
+      "includeFiles": "*.onnx"
     }
-  ],
+  },
   "routes": [
     {
       "src": "/(.*)",
