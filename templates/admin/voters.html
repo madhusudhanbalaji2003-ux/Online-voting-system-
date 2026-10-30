@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Voter Management — SecureVote{% endblock %}
+
+{% block head %}
+<style>
+/* ═══════════════════════════════════════════════
+   Admin Voters Page — two-tab layout
+   ═══════════════════════════════════════════════ */
+
+.vm-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0;
+  border-bottom: 1px solid rgba(124,58,237,0.2);
+  padding-bottom: 0;
+}
+
+.vm-tab {
+  padding: 0.7rem 1.4rem;
+  border-radius: 10px 10px 0 0;
+  border: 1px solid transparent;
+  border-bottom: none;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: transparent;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+.vm-tab:hover { color: #a78bfa; background: rgba(124,58,237,0.06); }
+.vm-tab.active {
+  background: rgba(124,58,237,0.15);
+  border-color: rgba(124,58,237,0.35);
+  color: #c4b5fd;
+}
+
+.vm-panel { display: none; padding-top: 2rem; }
+.vm-panel.active { display: block; }
+
+.csv-zone {
+  border: 2px dashed rgba(124,58,237,0.35);
+  border-radius: 14px;
+  padding: 2rem;
+  text-align: center;
+  transition: border-color 0.2s, background 0.2s;
+  cursor: pointer;
+  position: relative;
+}
+.csv-zone.dragover {
+  border-color: #7c3aed;
+  background: rgba(124,58,237,0.08);
+}
+.csv-zone-icon { font-size: 2.5rem; line-height: 1; margin-bottom: 0.5rem; }
+.csv-zone-text { color: var(--text-muted); font-size: 0.9rem; }
+.csv-zone-text strong { color: #a78bfa; }
+.csv-file-input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; cursor: pointer;
+}
+
+.csv-preview {
+  display: none;
+  margin-top: 1rem;
+  background: rgba(52,211,153,0.07);
+  border: 1px solid rgba(52,211,153,0.25);
+  border-radius: 10px;
+  padding: 0.9rem 1.2rem;
+  align-items: center;
+  gap: 0.8rem;
+}
+.csv-preview.show { display: flex; }
+.csv-preview-name { font-weight: 700; color: #34d399; font-size: 0.9rem; }
+.csv-preview-size { font-size: 0.78rem; color: var(--text-muted); }
+.csv-preview-clear {
+  margin-left: auto;
+  background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 6px;
+  color: #f87171;
+  font-size: 0.78rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.csv-preview-clear:hover { background: rgba(239,68,68,0.22); }
+
+.wl-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(124,58,237,0.15);
+  border: 1px solid rgba(124,58,237,0.3);
+  border-radius: 20px;
+  padding: 2px 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #a78bfa;
+}
+.badge-matched {
+  background: rgba(52,211,153,0.15);
+  border: 1px solid rgba(52,211,153,0.3);
+  color: #34d399;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.badge-unmatched {
+  background: rgba(251,191,36,0.12);
+  border: 1px solid rgba(251,191,36,0.3);
+  color: #fbbf24;
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.info-banner {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  background: rgba(124,58,237,0.08);
+  border: 1px solid rgba(124,58,237,0.25);
+  border-radius: 12px;
+  padding: 1rem 1.2rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.87rem;
+  color: #c4b5fd;
+  line-height: 1.5;
+}
+.info-banner-icon { font-size: 1.3rem; flex-shrink: 0; }
+.search-box { position: relative; margin-bottom: 1rem; }
+.search-box input {
+  width: 100%;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(124,58,237,0.22);
+  border-radius: 10px;
+  padding: 0.65rem 1rem 0.65rem 2.4rem;
+  color: #e0e0e0;
+  font-size: 0.88rem;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+.search-box input:focus { border-color: rgba(124,58,237,0.55); }
+.search-box-icon {
+  position: absolute; left: 0.75rem; top: 50%;
+  transform: translateY(-50%); color: var(--text-muted);
+  font-size: 0.9rem; pointer-events: none;
+}
+.toolbar { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-bottom: 1.2rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container fade-in">
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;">
+    <div>
+      <h1 style="font-size:1.5rem;margin-bottom:0.2rem;">👥 Voter Management</h1>
+      <p style="color:var(--text-muted);font-size:0.85rem;margin:0;">Manage registered voters and the authorized voter whitelist</p>
+    </div>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Dashboard</a>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+        <div class="alert alert-{{ cat }}" style="margin-bottom:1.5rem;">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="vm-tabs">
+    <button class="vm-tab active" id="tab-registered" onclick="switchTab('registered')">
+      🗳️ Registered Voters <span class="wl-count">{{ voters|length }}</span>
+    </button>
+    <button class="vm-tab" id="tab-whitelist" onclick="switchTab('whitelist')">
+      📋 Authorized Voter Whitelist <span class="wl-count">{{ allowed_voters|length if allowed_voters else 0 }}</span>
+    </button>
+  </div>
+
+  <!-- TAB 1: Registered Voters -->
+  <div class="vm-panel active" id="panel-registered">
+    <div class="toolbar">
+      <div class="search-box" style="flex:1;min-width:200px;">
+        <span class="search-box-icon">🔍</span>
+        <input type="text" id="search-registered" placeholder="Search by name, email or voter ID…"
+               oninput="filterTable('tbl-registered', this.value)">
+      </div>
+      <span style="color:var(--text-muted);font-size:0.85rem;">
+        Showing <strong id="reg-count">{{ voters|length }}</strong> voters
+      </span>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="table-wrap">
+        <table id="tbl-registered">
+          <thead>
+            <tr>
+              <th>#</th><th>Name</th><th>Email</th><th>Voter ID</th>
+              <th>Whitelist</th><th>Status</th><th>Registered</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set allowed_ids = allowed_voters | map(attribute='voter_id') | list if allowed_voters else [] %}
+            {% for v in voters %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td><strong>{{ v['name'] }}</strong></td>
+              <td>{{ v['email'] }}</td>
+              <td style="font-family:monospace;font-size:0.8rem;">{{ v['voter_id'] }}</td>
+              <td>
+                {% if not allowed_voters %}
+                  <span style="color:var(--text-muted);font-size:0.78rem;">—</span>
+                {% elif v['voter_id'] in allowed_ids %}
+                  <span class="badge-matched">✓ Authorized</span>
+                {% else %}
+                  <span class="badge-unmatched">⚠ Not listed</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if v['has_voted'] %}
+                <span class="badge badge-success">Voted ✓</span>
+                {% else %}
+                <span class="badge badge-warning">Pending</span>
+                {% endif %}
+              </td>
+              <td style="font-size:0.78rem;color:var(--text-muted);">{{ v['registered_at'] }}</td>
+              <td>
+                <form action="{{ url_for('admin_delete_voter', voter_id=v['id']) }}" method="POST"
+                      onsubmit="return confirm('Delete this voter? This cannot be undone.');" style="display:inline;">
+                  <button type="submit" class="btn btn-danger" style="padding:4px 10px;font-size:0.78rem;">Delete</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not voters %}
+            <tr><td colspan="8" style="text-align:center;padding:2.5rem;color:var(--text-muted);">No voters registered yet.</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB 2: Whitelist / CSV Import -->
+  <div class="vm-panel" id="panel-whitelist">
+
+    <div class="info-banner">
+      <span class="info-banner-icon">🔒</span>
+      <div>
+        <strong>Admin-controlled registration whitelist.</strong><br>
+        Upload a CSV with <code>voter_name</code> and <code>voter_id</code> columns (also accepts <em>name</em> / <em>id</em>).
+        Once any rows exist here, <strong>only</strong> voters whose ID appears in this list will be allowed to register.
+        <br><br>
+        <strong>CSV format example:</strong><br>
+        <code style="font-size:0.82rem;">voter_name,voter_id<br>Alice Johnson,VTR-001<br>Bob Smith,VTR-002</code>
+      </div>
+    </div>
+
+    <!-- Upload form -->
+    <div class="card" style="margin-bottom:2rem;">
+      <h3 style="font-size:1.05rem;margin-bottom:1.2rem;">📤 Import Voters from CSV</h3>
+      <form id="csv-upload-form" action="{{ url_for('admin_import_voters_csv') }}" method="POST" enctype="multipart/form-data">
+        <div class="csv-zone" id="csv-zone">
+          <input type="file" name="csv_file" id="csv-file-input" class="csv-file-input"
+                 accept=".csv" onchange="handleFileSelect(this)">
+          <div class="csv-zone-icon">📂</div>
+          <div class="csv-zone-text">
+            <strong>Click to browse</strong> or drag &amp; drop a CSV file here<br>
+            <span style="font-size:0.8rem;">Only <code>.csv</code> files accepted</span>
+          </div>
+        </div>
+        <div class="csv-preview" id="csv-preview">
+          <span style="font-size:1.5rem;">📄</span>
+          <div>
+            <div class="csv-preview-name" id="csv-preview-name"></div>
+            <div class="csv-preview-size" id="csv-preview-size"></div>
+          </div>
+          <button type="button" class="csv-preview-clear" onclick="clearFile()">✕ Remove</button>
+        </div>
+        <div style="display:flex;gap:1rem;margin-top:1.2rem;align-items:center;flex-wrap:wrap;">
+          <button type="submit" class="btn btn-primary" id="csv-submit-btn" disabled>⬆️ Import CSV</button>
+          <span style="color:var(--text-muted);font-size:0.82rem;">Duplicate voter IDs are silently ignored (safe to re-import).</span>
+        </div>
+      </form>
+    </div>
+
+    <!-- Whitelist table -->
+    <div class="toolbar">
+      <div class="search-box" style="flex:1;min-width:200px;">
+        <span class="search-box-icon">🔍</span>
+        <input type="text" id="search-whitelist" placeholder="Search by name or voter ID…"
+               oninput="filterTable('tbl-whitelist', this.value)">
+      </div>
+      {% if allowed_voters %}
+      <form action="{{ url_for('admin_clear_whitelist') }}" method="POST"
+            onsubmit="return confirm('Clear the entire whitelist? Registration will become unrestricted.');">
+        <button type="submit" class="btn btn-danger" style="font-size:0.82rem;padding:0.45rem 1rem;">🗑️ Clear All</button>
+      </form>
+      {% endif %}
+      <span style="color:var(--text-muted);font-size:0.85rem;">
+        <strong>{{ allowed_voters|length if allowed_voters else 0 }}</strong> authorized voters
+      </span>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="table-wrap">
+        <table id="tbl-whitelist">
+          <thead>
+            <tr>
+              <th>#</th><th>Voter Name</th><th>Voter ID / Order ID</th>
+              <th>Has Registered?</th><th>Imported At</th><th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set registered_ids = voters | map(attribute='voter_id') | list %}
+            {% for av in (allowed_voters or []) %}
+            <tr>
+              <td>{{ loop.index }}</td>
+              <td><strong>{{ av['voter_name'] }}</strong></td>
+              <td style="font-family:monospace;font-size:0.82rem;">{{ av['voter_id'] }}</td>
+              <td>
+                {% if av['voter_id'] in registered_ids %}
+                  <span class="badge-matched">✓ Registered</span>
+                {% else %}
+                  <span style="color:var(--text-muted);font-size:0.8rem;">Not yet</span>
+                {% endif %}
+              </td>
+              <td style="font-size:0.78rem;color:var(--text-muted);">{{ av['imported_at'] }}</td>
+              <td>
+                <form action="{{ url_for('admin_delete_allowed_voter', av_id=av['id']) }}" method="POST"
+                      onsubmit="return confirm('Remove this voter from the whitelist?');" style="display:inline;">
+                  <button type="submit" class="btn btn-danger" style="padding:4px 10px;font-size:0.78rem;">Remove</button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+            {% if not allowed_voters %}
+            <tr>
+              <td colspan="6" style="text-align:center;padding:2.5rem;color:var(--text-muted);">
+                No authorized voters imported yet. Upload a CSV above to get started.
+              </td>
+            </tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function switchTab(id) {
+  document.querySelectorAll('.vm-tab').forEach(function(t) { t.classList.remove('active'); });
+  document.querySelectorAll('.vm-panel').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('tab-' + id).classList.add('active');
+  document.getElementById('panel-' + id).classList.add('active');
+}
+
+function filterTable(tableId, query) {
+  var q = query.toLowerCase();
+  var rows = document.querySelectorAll('#' + tableId + ' tbody tr');
+  var visible = 0;
+  rows.forEach(function(row) {
+    var show = !q || row.textContent.toLowerCase().includes(q);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var countEl = document.getElementById('reg-count');
+  if (countEl && tableId === 'tbl-registered') countEl.textContent = visible;
+}
+
+function handleFileSelect(input) {
+  var file = input.files[0];
+  if (!file) { clearFile(); return; }
+  document.getElementById('csv-preview-name').textContent = file.name;
+  var sz = file.size;
+  document.getElementById('csv-preview-size').textContent =
+    sz < 1024 ? sz + ' B' : sz < 1048576 ? (sz/1024).toFixed(1) + ' KB' : (sz/1048576).toFixed(1) + ' MB';
+  document.getElementById('csv-preview').classList.add('show');
+  document.getElementById('csv-submit-btn').disabled = false;
+  document.getElementById('csv-zone').style.opacity = '0.5';
+}
+
+function clearFile() {
+  document.getElementById('csv-file-input').value = '';
+  document.getElementById('csv-preview').classList.remove('show');
+  document.getElementById('csv-submit-btn').disabled = true;
+  document.getElementById('csv-zone').style.opacity = '1';
+}
+
+(function() {
+  var zone = document.getElementById('csv-zone');
+  ['dragenter','dragover'].forEach(function(ev) {
+    zone.addEventListener(ev, function(e) { e.preventDefault(); zone.classList.add('dragover'); });
+  });
+  ['dragleave','drop'].forEach(function(ev) {
+    zone.addEventListener(ev, function(e) {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (ev === 'drop' && e.dataTransfer.files.length) {
+        var dt = new DataTransfer();
+        dt.items.add(e.dataTransfer.files[0]);
+        var inp = document.getElementById('csv-file-input');
+        inp.files = dt.files;
+        handleFileSelect(inp);
+      }
+    });
+  });
+})();
+
+if (window.location.hash === '#whitelist') switchTab('whitelist');
+</script>
+{% endblock %}
+

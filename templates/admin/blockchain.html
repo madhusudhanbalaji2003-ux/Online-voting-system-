@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Blockchain Explorer — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container fade-in" style="max-width:800px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2rem;">
+        <h1 style="font-size:1.5rem;">⛓️ Blockchain Explorer</h1>
+        <div style="display:flex;gap:8px;align-items:center;">
+            <span class="badge {{ 'badge-success' if is_valid else 'badge-danger' }}">
+                Chain {{ 'Valid ✓' if is_valid else 'INVALID ✗' }}
+            </span>
+            <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Dashboard</a>
+        </div>
+    </div>
+
+    <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:2rem;">
+        Total blocks: <strong>{{ chain|length }}</strong> — Each vote is stored as an immutable block linked by cryptographic hashes.
+    </p>
+
+    {% for block in chain|reverse %}
+    <div class="block-card">
+        <span class="block-index">Block #{{ block.index }}</span>
+        <div class="block-field">
+            <div class="label">Hash</div>
+            <div class="value">{{ block.hash }}</div>
+        </div>
+        <div class="block-field">
+            <div class="label">Previous Hash</div>
+            <div class="value">{{ block.previous_hash }}</div>
+        </div>
+        <div class="block-field">
+            <div class="label">Nonce</div>
+            <div class="value">{{ block.nonce }}</div>
+        </div>
+        <div class="block-field">
+            <div class="label">Data</div>
+            <div class="value" style="color:var(--text-secondary);">
+                {% if block.data.type == 'vote' %}
+                🗳️ Vote — {{ block.data.candidate_name }}
+                {% else %}
+                {{ block.data.message|default('System Block') }}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% if not loop.last %}
+    <div class="chain-link">🔗</div>
+    {% endif %}
+    {% endfor %}
+</div>
+{% endblock %}

@@ -1,0 +1,208 @@
+{% extends "base.html" %}
+{% block title %}Voter Registration — SecureVote{% endblock %}
+
+{% block content %}
+<div class="voter-reg-wrapper fade-in">
+    <div class="voter-reg-card">
+        <h1 class="voter-reg-title">Voter Registration</h1>
+        <p class="voter-reg-subtitle">Register your identity and face to participate in secure elections.</p>
+
+        <div id="alert-box"></div>
+
+        <form id="registerForm" class="voter-reg-form">
+            <div class="voter-field">
+                <label for="name" class="voter-label">Full Name</label>
+                <input type="text" id="name" class="voter-input" placeholder="Enter your full name" required autocomplete="name">
+            </div>
+
+            <div class="voter-field">
+                <label for="email" class="voter-label">Email Address</label>
+                <input type="email" id="email" class="voter-input" placeholder="your.email@example.com" required autocomplete="email">
+            </div>
+
+            <div class="voter-field">
+                <label for="voter_id" class="voter-label">Voter ID / Aadhaar Number</label>
+                <input type="text" id="voter_id" class="voter-input" placeholder="Enter unique voter ID" required>
+            </div>
+
+            <div class="voter-field">
+                <label for="date_of_birth" class="voter-label">Date of Birth (Must be 18+ years old)</label>
+                <input type="date" id="date_of_birth" class="voter-input" required>
+                <div id="dob-hint" class="voter-reg-hint">You must be born on or before Fri Sep 26 2008 to be eligible.</div>
+            </div>
+
+            <div class="voter-field">
+                <label class="voter-label">Face Capture</label>
+
+                <!-- Webcam container -->
+                <div class="voter-webcam-box" id="webcam-box" style="display:none;">
+                    <video id="video" autoplay playsinline></video>
+                    <div class="webcam-overlay"><div class="face-guide"></div></div>
+                </div>
+                <canvas id="canvas" style="display:none;"></canvas>
+
+                <!-- Action Controls -->
+                <div id="cam-action-group">
+                    <button type="button" id="startCamBtn" class="voter-cam-btn" onclick="startCamera()">
+                        START CAMERA
+                    </button>
+                    <div id="cam-live-controls" style="display:none;gap:10px;margin-top:10px;">
+                        <button type="button" id="captureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="capturePhoto()">
+                            📸 CAPTURE FACE
+                        </button>
+                        <button type="button" class="voter-cam-btn" style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;" onclick="cancelCamera()">
+                            CANCEL
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Captured Preview -->
+                <div id="captured-preview" style="margin-top:12px;display:none;">
+                    <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.02);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
+                        <img id="preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
+                        <div>
+                            <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
+                            <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startCamera()">RETAKE</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button type="submit" class="voter-submit-btn" id="submitBtn" disabled>
+                REGISTER &amp; SUBMIT
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const today = new Date();
+    const maxDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+    const dobInput = document.getElementById('date_of_birth');
+    dobInput.max = maxDate.toISOString().split('T')[0];
+
+    // Show eligible birth year hint
+    document.getElementById('dob-hint').textContent =
+        `You must be born on or before ${maxDate.toDateString()} to be eligible.`;
+
+    let stream = null;
+    let capturedImage = null;
+
+    function showAlert(msg, type='danger') {
+        document.getElementById('alert-box').innerHTML = `<div class="alert alert-${type}" style="margin-bottom:1.25rem;">${msg}</div>`;
+    }
+
+    async function startCamera() {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
+            const video = document.getElementById('video');
+            video.srcObject = stream;
+            document.getElementById('webcam-box').style.display = 'block';
+            document.getElementById('startCamBtn').style.display = 'none';
+            document.getElementById('cam-live-controls').style.display = 'flex';
+            document.getElementById('captured-preview').style.display = 'none';
+        } catch (e) {
+            showAlert('Camera access denied. Please allow camera permissions to capture your biometric face.');
+        }
+    }
+
+    function cancelCamera() {
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        document.getElementById('webcam-box').style.display = 'none';
+        document.getElementById('cam-live-controls').style.display = 'none';
+        document.getElementById('startCamBtn').style.display = 'inline-flex';
+        if (capturedImage) {
+            document.getElementById('captured-preview').style.display = 'block';
+        }
+    }
+
+    function capturePhoto() {
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+        canvas.getContext('2d').drawImage(video, 0, 0);
+        capturedImage = canvas.toDataURL('image/jpeg', 0.9);
+
+        // Show preview
+        document.getElementById('preview-img').src = capturedImage;
+        document.getElementById('captured-preview').style.display = 'block';
+        document.getElementById('submitBtn').disabled = false;
+
+        // Stop camera
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        document.getElementById('webcam-box').style.display = 'none';
+        document.getElementById('cam-live-controls').style.display = 'none';
+        document.getElementById('startCamBtn').style.display = 'none';
+    }
+
+    document.getElementById('registerForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!capturedImage) {
+            showAlert('Please capture your biometric face before submitting.');
+            return;
+        }
+
+        const btn = document.getElementById('submitBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span> PROCESSING...';
+
+        const data = {
+            name: document.getElementById('name').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            voter_id: document.getElementById('voter_id').value.trim(),
+            date_of_birth: document.getElementById('date_of_birth').value.trim(),
+            face_image: capturedImage
+        };
+
+        // Client-side age check (server also validates)
+        const dob = new Date(data.date_of_birth);
+        const ageDiff = Date.now() - dob.getTime();
+        const ageDate = new Date(ageDiff);
+        const age = Math.abs(ageDate.getUTCFullYear() - 1970);
+        if (age < 18) {
+            showAlert(`⚠️ You must be at least 18 years old to register. Your age is ${age} years.`);
+            btn.disabled = false;
+            btn.innerHTML = 'REGISTER &amp; SUBMIT';
+            return;
+        }
+
+        try {
+            const res = await fetch('/register', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            const result = await res.json();
+            if (result.success) {
+                showAlert('🎉 ' + result.message, 'success');
+                btn.innerHTML = '✅ REGISTERED SUCCESSFULLY';
+                setTimeout(() => {
+                    if (window.smoothNavigate) {
+                        window.smoothNavigate('/login');
+                    } else {
+                        window.location.href = '/login';
+                    }
+                }, 1600);
+            } else {
+                showAlert(result.message);
+                btn.disabled = false;
+                btn.innerHTML = 'REGISTER &amp; SUBMIT';
+            }
+        } catch (err) {
+            showAlert('Network error. Please try again.');
+            btn.disabled = false;
+            btn.innerHTML = 'REGISTER &amp; SUBMIT';
+        }
+    });
+</script>
+{% endblock %}
+

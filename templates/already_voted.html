@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Already Voted — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container-sm">
+    <div class="success-container fade-in">
+        <div class="success-icon">🚫</div>
+        <h1 style="font-size:2rem;margin-bottom:0.5rem;">Already Voted</h1>
+        <p style="color:var(--text-secondary);">You have already cast your vote in this election. Each voter may vote only once.</p>
+        <div style="margin-top:2rem;">
+            <a href="{{ url_for('results') }}" class="btn btn-primary">📊 View Results</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

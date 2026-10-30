@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Cast Your Vote — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container fade-in">
+
+    <div class="card" style="max-width:800px;margin:0 auto;">
+        <div class="card-header" style="text-align:center;">
+            <h2>{{ election['title'] }}</h2>
+            <p>{{ election['description'] }}</p>
+            <p style="color:var(--success);font-size:0.85rem;">Welcome, <strong>{{ voter['name'] }}</strong> — verified voter</p>
+        </div>
+        <div id="alert-box"></div>
+
+        <!-- ── Live Clock + Countdown (Split Flap) ── -->
+        <div style="background:transparent;border-radius:12px;padding:16px;margin-bottom:1.5rem;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;border:1px solid rgba(255,255,255,0.08);">
+            
+            <!-- Clock -->
+            <div>
+                <div style="font-size:0.65rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;">Current Time</div>
+                <div class="sf-cnt" style="transform:scale(0.85);transform-origin:left center;">
+                    <div class="sf-group">
+                        <div class="sf-module" data-id="vt-t-h1"></div>
+                        <div class="sf-module" data-id="vt-t-h2"></div>
+                    </div>
+                    <div class="sf-colon">:</div>
+                    <div class="sf-group">
+                        <div class="sf-module" data-id="vt-t-m1"></div>
+                        <div class="sf-module" data-id="vt-t-m2"></div>
+                    </div>
+                    <div class="sf-colon" style="opacity:0.3;">:</div>
+                    <div class="sf-group">
+                        <div class="sf-module" data-id="vt-t-s1" style="--w:24px;"></div>
+                        <div class="sf-module" data-id="vt-t-s2" style="--w:24px;"></div>
+                    </div>
+                    <div id="vt-ampm" style="margin-left:8px;font-weight:bold;color:var(--accent);">--</div>
+                </div>
+            </div>
+
+            <!-- Countdown -->
+            {% if voting_end %}
+            <div style="text-align:right;">
+                <div style="font-size:0.65rem;color:#f87171;text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;justify-content:flex-end;">
+                    <span style="width:6px;height:6px;background:#f87171;border-radius:50%;box-shadow:0 0 6px #f87171;animation:pulse 1s infinite;"></span>
+                    Voting Closes In
+                </div>
+                <div class="sf-cnt" style="transform:scale(0.85);transform-origin:right center;">
+                    <div class="sf-unit">
+                        <div class="sf-group">
+                            <div class="sf-module" data-id="vt-c-h1"></div>
+                            <div class="sf-module" data-id="vt-c-h2"></div>
+                        </div>
+                        <div class="sf-label">HRS</div>
+                    </div>
+                    <div class="sf-colon">:</div>
+                    <div class="sf-unit">
+                        <div class="sf-group">
+                            <div class="sf-module" data-id="vt-c-m1"></div>
+                            <div class="sf-module" data-id="vt-c-m2"></div>
+                        </div>
+                        <div class="sf-label">MIN</div>
+                    </div>
+                    <div class="sf-colon">:</div>
+                    <div class="sf-unit">
+                        <div class="sf-group">
+                            <div class="sf-module" data-id="vt-c-s1"></div>
+                            <div class="sf-module" data-id="vt-c-s2"></div>
+                        </div>
+                        <div class="sf-label">SEC</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+
+        <h3 style="font-size:1rem;color:var(--text-secondary);margin-bottom:1rem;">Select your candidate:</h3>
+        <div class="candidates-grid" id="candidates">
+            {% for c in candidates %}
+            <div class="candidate-card" data-id="{{ c['id'] }}" onclick="selectCandidate(this)">
+                <!-- Photo or symbol -->
+                <div style="width:72px;height:72px;border-radius:50%;overflow:hidden;border:3px solid rgba(124,58,237,0.4);background:linear-gradient(135deg,rgba(124,58,237,0.2),rgba(16,16,32,0.9));display:flex;align-items:center;justify-content:center;margin:0 auto 0.6rem;">
+                    {% if c['photo'] %}
+                    <img src="{{ url_for('static', filename='uploads/candidates/' ~ c['photo']) }}"
+                         alt="{{ c['name'] }}"
+                         style="width:100%;height:100%;object-fit:cover;"
+                         loading="lazy">
+                    {% else %}
+                    <span style="font-size:2rem;">{{ c['symbol'] if c['symbol'] else '🧑‍💼' }}</span>
+                    {% endif %}
+                </div>
+                <div class="symbol"{% if c['photo'] %} style="display:none;"{% endif %}>{{ c['symbol'] }}</div>
+                <div class="name">{{ c['name'] }}</div>
+                <div class="party">{{ c['party'] }}</div>
+                <div class="check">✓</div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <button class="btn btn-primary btn-block btn-lg" id="voteBtn" disabled onclick="castVote()">
+            Cast Your Vote
+        </button>
+        <p style="text-align:center;color:var(--text-muted);font-size:0.75rem;margin-top:12px;">
+            Your vote is final and cannot be changed after submission.
+        </p>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    // Initialize 3D modules
+    if (window.sfInit) window.sfInit();
+
+    function tick() {
+        // Clock
+        var now = new Date();
+        var h24 = now.getHours();
+        var ampm = h24 >= 12 ? 'PM' : 'AM';
+        var h12 = h24 % 12 || 12;
+        if (window.sfSetUnit) {
+            window.sfSetUnit('vt-t-h', h12);
+            window.sfSetUnit('vt-t-m', now.getMinutes());
+            window.sfSetUnit('vt-t-s', now.getSeconds());
+        }
+        var ampmEl = document.getElementById('vt-ampm');
+        if (ampmEl) ampmEl.textContent = ampm;
+
+        // Countdown
+        var endIso = '{{ voting_end }}';
+        if (endIso && window.sfSetUnit) {
+            var targetMs = new Date(endIso).getTime();
+            var delta = targetMs - Date.now();
+            if (delta <= 0) { window.location.reload(); return; }
+            var totalSec = Math.floor(delta / 1000);
+            window.sfSetUnit('vt-c-h', Math.floor(totalSec / 3600));
+            window.sfSetUnit('vt-c-m', Math.floor(totalSec / 60) % 60);
+            window.sfSetUnit('vt-c-s', totalSec % 60);
+        }
+    }
+    tick();
+    setInterval(tick, 1000);
+})();
+
+let selectedCandidate = null;
+
+function selectCandidate(el, id) {
+    document.querySelectorAll('.candidate-card').forEach(c => c.classList.remove('selected'));
+    el.classList.add('selected');
+    selectedCandidate = id !== undefined ? id : parseInt(el.dataset.id, 10);
+    document.getElementById('voteBtn').disabled = false;
+}
+
+async function castVote() {
+    if (!selectedCandidate) return;
+    if (!confirm('Are you sure you want to cast your vote? This action cannot be undone.')) return;
+
+    const btn = document.getElementById('voteBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Recording on Blockchain...';
+
+    try {
+        const res = await fetch('/vote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ candidate_id: selectedCandidate })
+        });
+        const result = await res.json();
+        if (result.success) {
+            if (window.smoothNavigate) {
+                window.smoothNavigate(result.redirect);
+            } else {
+                window.location.href = result.redirect;
+            }
+        } else {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = 'Cast Your Vote';
+        }
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Network error.</div>';
+        btn.disabled = false;
+        btn.innerHTML = 'Cast Your Vote';
+    }
+}
+</script>
+{% endblock %}

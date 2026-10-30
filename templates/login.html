@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Voter Login — SecureVote{% endblock %}
+
+{% block content %}
+<div class="voter-reg-wrapper fade-in">
+    <div class="voter-reg-card">
+        <h1 class="voter-reg-title">Voter Login</h1>
+        <p class="voter-reg-subtitle">Enter your registered credentials to receive a one-time verification code.</p>
+
+        <div id="alert-box"></div>
+
+        <form id="loginForm" class="voter-reg-form">
+            <div class="voter-field">
+                <label for="email" class="voter-label">Email Address</label>
+                <input type="email" id="email" class="voter-input" placeholder="your.email@example.com" required autocomplete="email">
+            </div>
+
+            <div class="voter-field">
+                <label for="voter_id" class="voter-label">Voter ID / Aadhaar Number</label>
+                <input type="text" id="voter_id" class="voter-input" placeholder="Enter unique voter ID" required>
+            </div>
+
+            <button type="submit" class="voter-submit-btn" id="loginBtn">
+                LOGIN &amp; SEND OTP
+            </button>
+        </form>
+
+        <div style="margin-top:1.25rem;text-align:center;">
+            <span style="font-size:0.82rem;color:#7b8398;">
+                Don't have an account? <a href="{{ url_for('register') }}" style="color:#a78bfa;font-weight:600;">Register here &rarr;</a>
+            </span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('loginBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span> SENDING OTP...';
+
+        try {
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    email: document.getElementById('email').value.trim(),
+                    voter_id: document.getElementById('voter_id').value.trim()
+                })
+            });
+            const result = await res.json();
+            if (result.success) {
+                document.getElementById('alert-box').innerHTML = `<div class="alert alert-success" style="margin-bottom:1.25rem;">✅ ${result.message}</div>`;
+                setTimeout(() => window.location.href = result.redirect, 800);
+            } else {
+                document.getElementById('alert-box').innerHTML = `<div class="alert alert-danger" style="margin-bottom:1.25rem;">⚠️ ${result.message}</div>`;
+                btn.disabled = false;
+                btn.innerHTML = 'LOGIN &amp; SEND OTP';
+            }
+        } catch {
+            document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger" style="margin-bottom:1.25rem;">Network error. Please try again.</div>';
+            btn.disabled = false;
+            btn.innerHTML = 'LOGIN &amp; SEND OTP';
+        }
+    });
+</script>
+{% endblock %}

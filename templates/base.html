@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="SecureVote — Online Voting System with Face Recognition, Liveness Detection, and Blockchain">
+    <title>{% block title %}SecureVote{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lovers+Quarrel&family=Story+Script&family=The+Nautigal:wght@400;700&family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/analogclock.css') }}">
+    {% block head %}{% endblock %}
+</head>
+
+<body>
+    <div class="grain-overlay"></div>
+    <!-- ── Elegant Top Taskbar Navigation ── -->
+    <header class="top-taskbar" id="topTaskbar">
+        <div class="taskbar-inner">
+            <!-- Brand -->
+            <a href="{{ url_for('index') }}" class="taskbar-brand">
+                <div class="brand-emblem">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-title">Secure<span class="brand-highlight">Vote</span></span>
+                    <span class="brand-tag">BLOCKCHAIN 2.0</span>
+                </div>
+            </a>
+
+            <!-- Navigation Links (Glass Pill Nav) -->
+            <nav class="taskbar-nav" id="taskbarNav">
+                <a href="{{ url_for('index') if request.endpoint != 'index' else '#section-home' }}"
+                   class="taskbar-link c-home {{ 'active' if request.endpoint == 'index' else '' }}"
+                   data-section="section-home">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Home</span>
+                </a>
+
+                <a href="{{ url_for('index') + '#section-register' if request.endpoint != 'index' else '#section-register' }}"
+                   class="taskbar-link c-reg {{ 'active' if request.endpoint == 'register' else '' }}"
+                   data-section="section-register">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                            <circle cx="12" cy="7" r="4"/>
+                            <line x1="19" y1="8" x2="19" y2="14"/>
+                            <line x1="22" y1="11" x2="16" y2="11"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Registration</span>
+                </a>
+
+                <a href="{{ url_for('index') + '#section-vote' if request.endpoint != 'index' else '#section-vote' }}"
+                   class="taskbar-link c-vote {{ 'active' if request.endpoint in ['login', 'verify_otp', 'verify_face', 'vote', 'vote_success', 'already_voted'] else '' }}"
+                   data-section="section-vote">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 11l3 3L22 4"/>
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Voting</span>
+                </a>
+
+                <a href="{{ url_for('index') + '#section-results' if request.endpoint != 'index' else '#section-results' }}"
+                   class="taskbar-link c-results {{ 'active' if request.endpoint == 'results' else '' }}"
+                   data-section="section-results">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                            <rect x="4" y="18" width="4" height="4" rx="1"/>
+                            <rect x="10" y="2" width="4" height="20" rx="1" fill="currentColor" stroke="none" style="opacity:0.25"/>
+                            <rect x="16" y="8" width="4" height="14" rx="1"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Results</span>
+                </a>
+
+                <a href="{{ url_for('index') + '#section-architecture' if request.endpoint != 'index' else '#section-architecture' }}"
+                   class="taskbar-link c-arch"
+                   data-section="section-architecture">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                            <line x1="8" y1="21" x2="16" y2="21"/>
+                            <line x1="12" y1="17" x2="12" y2="21"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Security</span>
+                </a>
+
+                <a href="{{ url_for('admin_login') }}"
+                   class="taskbar-link c-admin {{ 'active' if request.endpoint and request.endpoint.startswith('admin') else '' }}"
+                   data-section="section-admin">
+                    <span class="tb-icon">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="8" r="3"/>
+                            <path d="M20 21a8 8 0 1 0-16 0"/>
+                            <path d="M12 11v10"/>
+                            <path d="M9 18l3 3 3-3"/>
+                        </svg>
+                    </span>
+                    <span class="tb-label">Admin</span>
+                </a>
+            </nav>
+
+            <!-- Actions on Right -->
+            <div class="taskbar-actions">
+                <div class="taskbar-beacon" title="Blockchain Network Status">
+                    <span class="beacon-pulse"></span>
+                    <span class="beacon-text">Chain Live</span>
+                </div>
+
+                <a href="{{ url_for('index') + '#section-vote' if request.endpoint != 'index' else '#section-vote' }}"
+                   class="taskbar-cta btn-cast-vote">
+                    <span>Vote Now</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </a>
+
+                <!-- Mobile Hamburger Toggle -->
+                <button class="taskbar-hamburger" id="taskbarHamburger" aria-label="Toggle navigation menu" onclick="toggleMobileMenu()">
+                    <span class="hb-line"></span>
+                    <span class="hb-line"></span>
+                    <span class="hb-line"></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Drawer -->
+        <div class="taskbar-mobile-drawer" id="mobileDrawer">
+            <div class="drawer-links">
+                <a href="{{ url_for('index') if request.endpoint != 'index' else '#section-home' }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">🏠</span>
+                    <span class="dl-text">Home</span>
+                </a>
+                <a href="{{ url_for('index') + '#section-register' if request.endpoint != 'index' else '#section-register' }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">📝</span>
+                    <span class="dl-text">Voter Registration</span>
+                </a>
+                <a href="{{ url_for('index') + '#section-vote' if request.endpoint != 'index' else '#section-vote' }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">🗳️</span>
+                    <span class="dl-text">Cast Your Vote</span>
+                </a>
+                <a href="{{ url_for('index') + '#section-results' if request.endpoint != 'index' else '#section-results' }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">📊</span>
+                    <span class="dl-text">Election Results</span>
+                </a>
+                <a href="{{ url_for('index') + '#section-architecture' if request.endpoint != 'index' else '#section-architecture' }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">🛡️</span>
+                    <span class="dl-text">Security Architecture</span>
+                </a>
+                <a href="{{ url_for('admin_login') }}" class="drawer-link" onclick="closeMobileMenu()">
+                    <span class="dl-icon">⚙️</span>
+                    <span class="dl-text">Admin Portal</span>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <div id="flash-messages" style="max-width:600px;margin:1rem auto;padding:0 1rem;">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        {% for category, message in messages %}
+        <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+        {% endif %}
+        {% endwith %}
+    </div>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <p>SecureVote &copy; 2026 &mdash; Blockchain &amp; AI Face Recognition</p>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/flipclock.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/analogclock.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/discord-button.js') }}"></script>
+    {% block scripts %}{% endblock %}
+
+    <script>
+        // Smooth Page Transition Handler
+        (function () {
+            // Remove leaving state when page is restored from bfcache (Back/Forward)
+            window.addEventListener('pageshow', function (event) {
+                document.body.classList.remove('page-leaving');
+            });
+
+            // Global programmatic navigation helper
+            window.smoothNavigate = function (targetUrl) {
+                document.body.classList.add('page-leaving');
+                setTimeout(function () {
+                    window.location.href = targetUrl;
+                }, 180);
+            };
+
+            // Intercept link clicks for smooth transitions
+            document.addEventListener('click', function (e) {
+                var link = e.target.closest('a[href]');
+                if (!link) return;
+
+                var href = link.getAttribute('href');
+                var target = link.getAttribute('target');
+
+                // Skip non-navigating links, hash links, external links, javascript, or modifier keys
+                if (!href || href.startsWith('#') || href.startsWith('javascript:') || 
+                    href.startsWith('mailto:') || href.startsWith('tel:') || 
+                    target === '_blank' || link.hasAttribute('download')) {
+                    return;
+                }
+
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) {
+                    return;
+                }
+
+                var url;
+                try {
+                    url = new URL(link.href, window.location.origin);
+                } catch (err) {
+                    return;
+                }
+
+                // Only internal same-origin links
+                if (url.origin !== window.location.origin) return;
+
+                // Same page anchor link
+                if (url.pathname === window.location.pathname && url.search === window.location.search) {
+                    return;
+                }
+
+                // If native View Transitions are supported in browser, let it work natively
+                if ('startViewTransition' in document && window.navigation) {
+                    return;
+                }
+
+                e.preventDefault();
+                window.smoothNavigate(link.href);
+            });
+            // Toggle Mobile Menu
+            window.toggleMobileMenu = function () {
+                var drawer = document.getElementById('mobileDrawer');
+                var btn = document.getElementById('taskbarHamburger');
+                if (drawer) {
+                    drawer.classList.toggle('open');
+                }
+                if (btn) {
+                    btn.classList.toggle('open');
+                }
+            };
+
+            window.closeMobileMenu = function () {
+                var drawer = document.getElementById('mobileDrawer');
+                var btn = document.getElementById('taskbarHamburger');
+                if (drawer) drawer.classList.remove('open');
+                if (btn) btn.classList.remove('open');
+            };
+
+            // Smooth scrolling for hash links
+            document.addEventListener('click', function(e) {
+                var anchor = e.target.closest('a[href^="#"]');
+                if (!anchor) return;
+                var targetId = anchor.getAttribute('href').substring(1);
+                if (!targetId) return;
+                var targetEl = document.getElementById(targetId);
+                if (targetEl) {
+                    e.preventDefault();
+                    var offset = 80;
+                    var bodyRect = document.body.getBoundingClientRect().top;
+                    var elementRect = targetEl.getBoundingClientRect().top;
+                    var elementPosition = elementRect - bodyRect;
+                    var offsetPosition = elementPosition - offset;
+
+                    var tbLink = anchor.closest('.taskbar-link') || document.querySelector('.taskbar-link[data-section="' + targetId + '"]');
+                    if (tbLink) {
+                        document.querySelectorAll('.taskbar-link').forEach(function(l) { l.classList.remove('active'); });
+                        tbLink.classList.add('active');
+                    }
+
+                    window.scrollTo({
+                        top: offsetPosition,
+                        behavior: 'smooth'
+                    });
+                    if (window.history.pushState) {
+                        window.history.pushState(null, null, '#' + targetId);
+                    }
+                }
+            });
+
+            // Result bar fill handler
+            function updateResultBars() {
+                document.querySelectorAll('.result-fill[data-pct]').forEach(function(el) {
+                    el.style.width = el.dataset.pct + '%';
+                });
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateResultBars);
+            } else {
+                updateResultBars();
+            }
+        })();
+    </script>
+
+    <script>
+        // ── Taskbar scroll-glass deepening ──────────────────────────
+        (function () {
+            var tb = document.getElementById('topTaskbar');
+            if (!tb) return;
+            var ticking = false;
+            function onScroll() {
+                if (!ticking) {
+                    requestAnimationFrame(function () {
+                        if (window.scrollY > 30) {
+                            tb.classList.add('scrolled');
+                        } else {
+                            tb.classList.remove('scrolled');
+                        }
+                        ticking = false;
+                    });
+                    ticking = true;
+                }
+            }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            onScroll();
+        })();
+    </script>
+
+    <!-- Liquid Glass Distortion SVG Filter -->
+    <svg style="position:fixed;top:0;left:0;width:0;height:0;pointer-events:none;z-index:-999;opacity:0;" aria-hidden="true">
+        <defs>
+            <filter id="liquid-distortion" x="-20%" y="-20%" width="140%" height="140%">
+                <feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="3" result="turb">
+                    <animate attributeName="baseFrequency" dur="16s" values="0.02 0.03;0.035 0.018;0.018 0.028;0.02 0.03" repeatCount="indefinite" />
+                </feTurbulence>
+                <feDisplacementMap in="SourceGraphic" in2="turb" scale="12" xChannelSelector="R" yChannelSelector="G" />
+            </filter>
+        </defs>
+    </svg>
+
+</body>
+
+</html>

@@ -1,0 +1,1004 @@
+{% extends "base.html" %}
+{% block title %}SecureVote — Secure Online Voting Platform{% endblock %}
+
+{% block content %}
+<!-- ── Floating Vertical Section Quick Jump Dots (Right Edge) ── -->
+<nav class="section-dots-nav" id="sectionDotsNav" aria-label="Section Quick Jump">
+    <a href="#section-home" class="dot-item active" data-target="section-home" aria-label="Home Section">
+        <span class="dot-tooltip">Home &amp; System Time</span>
+    </a>
+    <a href="#section-register" class="dot-item" data-target="section-register" aria-label="Registration Section">
+        <span class="dot-tooltip">01. Voter Registration</span>
+    </a>
+    <a href="#section-vote" class="dot-item" data-target="section-vote" aria-label="Voting Section">
+        <span class="dot-tooltip">02. Cast Your Vote</span>
+    </a>
+    <a href="#section-results" class="dot-item" data-target="section-results" aria-label="Results Section">
+        <span class="dot-tooltip">03. Live Results &amp; Ledger</span>
+    </a>
+    <a href="#section-architecture" class="dot-item" data-target="section-architecture" aria-label="Security Section">
+        <span class="dot-tooltip">04. Defense Architecture</span>
+    </a>
+</nav>
+
+<div class="scroll-flow-container">
+
+    <!-- ════════════════════════════════════════════════
+         SECTION 1: HOME / HERO & ELECTION TIMEPIECE
+         ════════════════════════════════════════════════ -->
+    <section class="scroll-section" id="section-home">
+        <div class="container" style="max-width:1100px;text-align:center;">
+            
+            <div style="margin-bottom:1.5rem;">
+                <span class="section-tag">
+                    <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#feffff;box-shadow:0 0 8px #38bdf8;"></span>
+                    SECURE ONLINE VOTING
+                </span>
+            </div>
+
+            <h5 class="hero-stagger the-nautigal-bold" id="heroTitle" style="font-size:clamp(3.4rem, 6.5vw, 5.8rem);line-height:1.18;letter-spacing:0.02em;margin-bottom:1.25rem;">
+                <span class="word">Secure,</span> <span class="word">Transparent,</span><span class="word gradient">Verifiable.</span>
+            </h5>
+
+            <p class="hero-subtitle" style="max-width:680px;margin:0 auto 2.5rem;font-size:1.1rem;color:var(--text-secondary);line-height:1.6;">
+                A tamper-proof online voting platform powered by AI Face Recognition, Liveness Blink Detection, and Immutable Blockchain consensus.
+            </p>
+
+            <div class="hero-actions" style="margin-bottom:3.5rem;">
+                <a href="#section-register" class="nav-cta btn-primary">
+                    Register to Vote
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="7" y1="17" x2="17" y2="7" />
+                        <polyline points="7 7 17 7 17 17" />
+                    </svg>
+                </a>
+                <a href="#section-vote" class="nav-cta btn-outline">
+                    Cast Your Vote
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+                        <line x1="7" y1="17" x2="17" y2="7" />
+                        <polyline points="7 7 17 7 17 17" />
+                    </svg>
+                </a>
+            </div>
+
+            <!-- ── Live Clock + Election Countdown Card ── -->
+            <div class="home-clock-card" style="max-width:860px;margin:0 auto;">
+                <!-- Live clock (Spiked Rotating Analog Time System) -->
+                <div class="home-clock-left">
+                    <div class="hc-label">SYSTEM TIME</div>
+                    <div class="clock-wrapper">
+                        <div class="clock" id="home-analog-clock">
+                            <div class="seconds"></div>
+                            <div class="minutes"></div>
+                            <div class="minute"></div>
+                            <div class="hour"></div>
+                        </div>
+                    </div>
+                    <div class="hc-date" id="hc-date">---</div>
+                </div>
+
+                <!-- Divider -->
+                <div class="hc-divider"></div>
+
+                <!-- Election countdown / status -->
+                <div class="home-clock-right">
+                    {% if voting_status == 'active' %}
+                    <div class="hc-status hc-status--active">
+                        <span class="hc-live-dot"></span> VOTING OPEN
+                    </div>
+                    <div class="hc-cd-label">Voting closes in</div>
+                    
+                    <div class="sf-cnt">
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-h1"></div>
+                                <div class="sf-module" data-id="hc-c-h2"></div>
+                            </div>
+                            <div class="sf-label">HRS</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-m1"></div>
+                                <div class="sf-module" data-id="hc-c-m2"></div>
+                            </div>
+                            <div class="sf-label">MIN</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-s1"></div>
+                                <div class="sf-module" data-id="hc-c-s2"></div>
+                            </div>
+                            <div class="sf-label">SEC</div>
+                        </div>
+                    </div>
+
+                    <div class="hc-period-info" style="margin-top:12px;">
+                        Closes: <strong>{{ voting_end[:16].replace('T',' ') }}</strong>
+                    </div>
+
+                    {% elif voting_status == 'scheduled' %}
+                    <div class="hc-status hc-status--scheduled">⏳ VOTING SCHEDULED</div>
+                    <div class="hc-cd-label">Voting opens in</div>
+                    
+                    <div class="sf-cnt">
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-d1"></div>
+                                <div class="sf-module" data-id="hc-c-d2"></div>
+                            </div>
+                            <div class="sf-label">DAYS</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-h1"></div>
+                                <div class="sf-module" data-id="hc-c-h2"></div>
+                            </div>
+                            <div class="sf-label">HRS</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-m1"></div>
+                                <div class="sf-module" data-id="hc-c-m2"></div>
+                            </div>
+                            <div class="sf-label">MIN</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-s1"></div>
+                                <div class="sf-module" data-id="hc-c-s2"></div>
+                            </div>
+                            <div class="sf-label">SEC</div>
+                        </div>
+                    </div>
+
+                    <div class="hc-period-info" style="margin-top:12px;">
+                        Opens: <strong>{{ voting_start[:16].replace('T',' ') }}</strong>
+                    </div>
+
+                    {% elif voting_status == 'ended' %}
+                    <div class="hc-status hc-status--ended">🔒 VOTING CLOSED</div>
+                    <div class="hc-cd-label">This election has concluded</div>
+                    <div class="hc-period-info" style="margin-top:0.75rem;">
+                        Ran: <strong>{{ voting_start[:16].replace('T',' ') }}</strong>
+                        &rarr; <strong>{{ voting_end[:16].replace('T',' ') }}</strong>
+                    </div>
+                    <a href="#section-results" class="btn btn-outline" style="margin-top:1rem;font-size:0.82rem;padding:8px 18px;">
+                        📊 View Results
+                    </a>
+
+                    {% elif election %}
+                    <div class="hc-status hc-status--norestrict">🗳️ VOTING OPEN</div>
+                    <div class="hc-cd-label">{{ election['title'] }}</div>
+                    <div class="hc-period-info" style="margin-top:0.6rem;">
+                        No time restriction — vote any time
+                    </div>
+                    <a href="#section-vote" class="btn btn-primary" style="margin-top:1rem;font-size:0.82rem;padding:8px 18px;">
+                        Cast Your Vote →
+                    </a>
+                    {% else %}
+                    <div class="hc-status hc-status--active">
+                        <span class="hc-live-dot"></span> SYSTEM READY
+                    </div>
+                    <div class="hc-cd-label">Blockchain Online Voting Engine</div>
+                    <div class="hc-period-info" style="margin-top:0.6rem;">
+                        AI Face Verification &amp; Cryptographic Audit Active
+                    </div>
+                    <div style="margin-top:1rem;display:flex;gap:0.5rem;flex-wrap:wrap;justify-content:center;">
+                        <a href="#section-register" class="btn btn-primary" style="font-size:0.82rem;padding:8px 16px;">
+                            Register Voter →
+                        </a>
+                        <a href="#section-vote" class="btn btn-outline" style="font-size:0.82rem;padding:8px 16px;">
+                            Voter Portal
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Downward Advance Button -->
+            <a href="#section-register" class="scroll-advance-btn">
+                <span>Next: Voter Registration</span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </a>
+
+        </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════════
+         SECTION 2: VOTER REGISTRATION PORTAL
+         ════════════════════════════════════════════════ -->
+    <section class="scroll-section" id="section-register">
+        <div class="voter-reg-wrapper">
+            <div class="voter-reg-card">
+                <h2 class="voter-reg-title">Voter Registration</h2>
+                <p class="voter-reg-subtitle">Register your identity and face to participate in secure elections.</p>
+
+                <div id="sec-reg-alert"></div>
+
+                <form id="secRegisterForm" class="voter-reg-form" onsubmit="handleSectionRegister(event)">
+                    <div class="voter-field">
+                        <label for="sec_reg_name" class="voter-label">Full Name</label>
+                        <input type="text" id="sec_reg_name" class="voter-input" placeholder="Enter your full name" required autocomplete="name">
+                    </div>
+
+                    <div class="voter-field">
+                        <label for="sec_reg_email" class="voter-label">Email Address</label>
+                        <input type="email" id="sec_reg_email" class="voter-input" placeholder="your.email@example.com" required autocomplete="email">
+                    </div>
+
+                    <div class="voter-field">
+                        <label for="sec_reg_voter_id" class="voter-label">Voter ID / Aadhaar Number</label>
+                        <input type="text" id="sec_reg_voter_id" class="voter-input" placeholder="Enter unique voter ID" required>
+                    </div>
+
+                    <div class="voter-field">
+                        <label for="sec_reg_dob" class="voter-label">Date of Birth (Must be 18+ years old)</label>
+                        <input type="date" id="sec_reg_dob" class="voter-input" required>
+                        <div id="sec-dob-hint" class="voter-reg-hint">You must be born on or before Fri Sep 26 2008 to be eligible.</div>
+                    </div>
+
+                    <div class="voter-field">
+                        <label class="voter-label">Face Capture</label>
+
+                        <!-- Webcam container -->
+                        <div class="voter-webcam-box" id="sec-webcam-box" style="display:none;">
+                            <video id="sec-video" autoplay playsinline></video>
+                            <div class="webcam-overlay"><div class="face-guide"></div></div>
+                        </div>
+                        <canvas id="sec-canvas" style="display:none;"></canvas>
+
+                        <!-- Action Controls -->
+                        <div id="sec-cam-action-group">
+                            <button type="button" id="secStartCamBtn" class="voter-cam-btn" onclick="startSectionCamera()">
+                                START CAMERA
+                            </button>
+                            <div id="sec-cam-live-controls" style="display:none;gap:10px;margin-top:10px;">
+                                <button type="button" id="secCaptureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="captureSectionPhoto()">
+                                    📸 CAPTURE FACE
+                                </button>
+                                <button type="button" class="voter-cam-btn" style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;" onclick="cancelSectionCamera()">
+                                    CANCEL
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Captured Preview -->
+                        <div id="sec-captured-preview" style="margin-top:12px;display:none;">
+                            <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.02);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
+                                <img id="sec-preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
+                                <div>
+                                    <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
+                                    <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startSectionCamera()">RETAKE</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="voter-submit-btn" id="secSubmitBtn" disabled>
+                        REGISTER &amp; SUBMIT
+                    </button>
+                </form>
+            </div>
+
+            <!-- Downward Advance Button -->
+            <div style="text-align:center;margin-top:1.5rem;">
+                <a href="#section-vote" class="scroll-advance-btn">
+                    <span>Next: Cast Your Vote</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════════
+         SECTION 3: VOTING PORTAL / VOTER LOGIN
+         ════════════════════════════════════════════════ -->
+    <section class="scroll-section" id="section-vote">
+        <div class="voter-reg-wrapper">
+            <div class="voter-reg-card">
+                <h2 class="voter-reg-title">Voter Login</h2>
+                <p class="voter-reg-subtitle">Enter your registered credentials to receive a one-time verification code.</p>
+
+                <div id="sec-vote-alert"></div>
+
+                <form id="secVoteForm" class="voter-reg-form" onsubmit="handleSectionLogin(event)">
+                    <div class="voter-field">
+                        <label for="sec_login_email" class="voter-label">Email Address</label>
+                        <input type="email" id="sec_login_email" class="voter-input" placeholder="your.email@example.com" required autocomplete="email">
+                    </div>
+
+                    <div class="voter-field">
+                        <label for="sec_login_voter_id" class="voter-label">Voter ID / Aadhaar Number</label>
+                        <input type="text" id="sec_login_voter_id" class="voter-input" placeholder="Enter unique voter ID" required>
+                    </div>
+
+                    <button type="submit" class="voter-submit-btn" id="secLoginBtn">
+                        LOGIN &amp; SEND OTP
+                    </button>
+                </form>
+
+                <div style="margin-top:1.25rem;text-align:center;">
+                    <span style="font-size:0.82rem;color:#7b8398;">
+                        Need to register first? <a href="#section-register" style="color:#a78bfa;font-weight:600;">Register above &uarr;</a>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Downward Advance Button -->
+            <div style="text-align:center;margin-top:1.5rem;">
+                <a href="#section-results" class="scroll-advance-btn">
+                    <span>Next: Live Results &amp; Ledger</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════════
+         SECTION 4: ELECTION RESULTS
+         ════════════════════════════════════════════════ -->
+    <section class="scroll-section" id="section-results">
+        <div class="voter-reg-wrapper" style="max-width:580px;">
+            <div class="voter-reg-card" style="text-align:center;padding:48px 36px;">
+                <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px;">
+                    <span style="font-size:1.6rem;line-height:1;">📊</span>
+                    <h2 class="voter-reg-title" style="margin:0;font-size:1.65rem;">Election Results</h2>
+                </div>
+                <p class="voter-reg-subtitle" style="margin:0 0 2.5rem 0;">
+                    {{ election['title'] if election else 'General Election 2026' }}
+                </p>
+
+                {% if not results_visible %}
+                <!-- Results Not Yet Available (Matching user screenshot) -->
+                <div>
+                    <div style="font-size:3.8rem;line-height:1;margin-bottom:1.5rem;filter:drop-shadow(0 0 24px rgba(245,158,11,0.25));">
+                        🔒
+                    </div>
+                    <h3 style="font-size:1.45rem;font-weight:700;color:#c084fc;margin:0 0 12px 0;letter-spacing:-0.01em;">
+                        Results Not Yet Available
+                    </h3>
+                    <p style="font-size:0.92rem;color:#858ea6;line-height:1.55;max-width:440px;margin:0 auto 2rem;">
+                        The election administrator has not yet published the results. Please check back later once the voting period has concluded.
+                    </p>
+                    <div style="display:inline-flex;align-items:center;gap:10px;background:rgba(124,58,237,0.08);border:1px solid rgba(167,139,250,0.25);border-radius:9999px;padding:9px 20px;">
+                        <span style="width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block;box-shadow:0 0 8px #f59e0b;"></span>
+                        <span style="color:#a78bfa;font-size:0.84rem;font-weight:500;">Awaiting administrator to publish results</span>
+                    </div>
+                </div>
+
+                {% elif results_visible and candidates %}
+                <!-- Results visible -->
+                <div style="text-align:left;margin-top:1rem;">
+                    {% for c in candidates %}
+                    {% set count = vote_counts.get(c['name'], 0) %}
+                    {% set pct = (count / total_votes * 100)|round(1) if total_votes > 0 else 0 %}
+                    <div style="margin-bottom:1.25rem;">
+                        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                            <span style="font-weight:600;font-size:0.95rem;color:#ffffff;">
+                                {{ c['name'] }} <small style="color:#7b8398;font-weight:400;">({{ c['party'] }})</small>
+                            </span>
+                            <span style="font-weight:700;font-size:0.88rem;color:#a78bfa;">
+                                {{ count }} votes ({{ pct }}%)
+                            </span>
+                        </div>
+                        <div style="height:8px;background:#090a10;border-radius:6px;overflow:hidden;border:1px solid #1a1d29;">
+                            <div class="result-fill" data-pct="{{ pct }}" style="height:100%;background:linear-gradient(90deg, #4338ca, #3b82f6);border-radius:6px;width:0%;"></div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Downward Advance Button -->
+            <div style="text-align:center;margin-top:1.5rem;">
+                <a href="#section-architecture" class="scroll-advance-btn">
+                    <span>Next: Defense Architecture</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </section>
+
+
+    <!-- ════════════════════════════════════════════════
+         SECTION 5: SECURITY ARCHITECTURE & STATS
+         ════════════════════════════════════════════════ -->
+    <section class="scroll-section" id="section-architecture">
+        <div class="container" style="max-width:1150px;width:100%;">
+            
+            <div class="section-head">
+                <span class="section-tag tag-cyan">DEFENSE MECHANISMS</span>
+                <h2 class="section-title">Engineered for Absolute Integrity</h2>
+                <p class="section-desc">
+                    Cryptographic verification and AI-driven defense mechanisms guaranteeing tamper-proof elections.
+                </p>
+            </div>
+
+            <div class="features-grid">
+                <!-- 1: OTP -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-cyan">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">SECURITY</span>
+                    </div>
+                    <h3 class="pfc-title">OTP Auth</h3>
+                    <p class="pfc-desc">Time-sensitive encrypted tokens prevent unauthorized ballot access.</p>
+                </div>
+
+                <!-- 2: Face Recognition -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-purple">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M9 3H5a2 2 0 0 0-2 2v4m0 6v4a2 2 0 0 0 2 2h4m6 0h4a2 2 0 0 0 2-2v-4m0-6V5a2 2 0 0 0-2-2h-4"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">BIOMETRIC</span>
+                    </div>
+                    <h3 class="pfc-title">AI Face ID</h3>
+                    <p class="pfc-desc">128-D embeddings verify live voter geometry against records.</p>
+                </div>
+
+                <!-- 3: Liveness Detection -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-emerald">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">ANTI-SPOOF</span>
+                    </div>
+                    <h3 class="pfc-title">Blink Scan</h3>
+                    <p class="pfc-desc">EAR ocular tracking thwarts deepfakes and photo attacks.</p>
+                </div>
+
+                <!-- 4: Blockchain -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-indigo">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+                                <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+                                <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">IMMUTABLE</span>
+                    </div>
+                    <h3 class="pfc-title">Blockchain</h3>
+                    <p class="pfc-desc">SHA-256 hashed ballots chained in a Merkle-validated ledger.</p>
+                </div>
+
+                <!-- 5: Single Vote Guarantee -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-rose">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                                <path d="m9 12 2 2 4-4"></path>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">LOCK</span>
+                    </div>
+                    <h3 class="pfc-title">Zero Duplicates</h3>
+                    <p class="pfc-desc">Atomic locks and crypto signatures prevent multi-ballot fraud.</p>
+                </div>
+
+                <!-- 6: Real-Time Results -->
+                <div class="pro-feature-card">
+                    <div class="pfc-top">
+                        <div class="pfc-icon-wrap pfc-icon-amber">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="18" y1="20" x2="18" y2="10"></line>
+                                <line x1="12" y1="20" x2="12" y2="4"></line>
+                                <line x1="6" y1="20" x2="6" y2="14"></line>
+                            </svg>
+                        </div>
+                        <span class="pfc-badge">TELEMETRY</span>
+                    </div>
+                    <h3 class="pfc-title">Live Audits</h3>
+                    <p class="pfc-desc">Block explorer lets observers verify results from the chain.</p>
+                </div>
+            </div>
+
+            <!-- Stats Showcase -->
+            <section class="stats-section" style="margin-top:4rem;">
+                <h3 style="font-size:2.2rem;margin-bottom:2.5rem;font-weight:800;text-align:center;">
+                    Immutable <br/> <em class="gradient" style="font-style:normal;">Election Integrity</em>.
+                </h3>
+                <div class="stats-inner">
+                    <div class="stat-block">
+                        <div class="num" data-count="12"><span>0</span></div>
+                        <div class="lbl">Secured Elections</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="num" data-count="99"><span>0</span><small style="font-size:2rem;">.9%</small></div>
+                        <div class="lbl">System Uptime</div>
+                    </div>
+                    <div class="stat-block">
+                        <div class="num" data-count="24"><span>0</span><small style="font-size:2rem;">/7</small></div>
+                        <div class="lbl">Blockchain Sync</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Back to top button -->
+            <div style="text-align:center;margin-top:3.5rem;">
+                <a href="#section-home" class="scroll-advance-btn">
+                    <span>Back to Top &uarr;</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="18 15 12 9 6 15"/>
+                    </svg>
+                </a>
+            </div>
+
+        </div>
+    </section>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+<script>
+(function () {
+  /* ── 1. GSAP Hero & Stats Animations ── */
+  if (typeof gsap !== 'undefined') {
+      if (typeof ScrollTrigger !== 'undefined') {
+          gsap.registerPlugin(ScrollTrigger);
+      }
+
+      // Hero Stagger
+      gsap.to(".hero-stagger .word", {
+          y: 0,
+          opacity: 1,
+          duration: 0.8,
+          stagger: 0.15,
+          ease: "power3.out",
+          delay: 0.1
+      });
+
+      // Stats Counter Animation
+      const statBlocks = document.querySelectorAll('.stat-block .num');
+      statBlocks.forEach(block => {
+          let target = parseFloat(block.getAttribute('data-count'));
+          let span = block.querySelector('span');
+          if (typeof ScrollTrigger !== 'undefined') {
+              ScrollTrigger.create({
+                  trigger: block,
+                  start: "top 85%",
+                  once: true,
+                  onEnter: () => {
+                      gsap.to(span, {
+                          innerHTML: target,
+                          duration: 2,
+                          snap: { innerHTML: 1 },
+                          ease: "power2.out"
+                      });
+                  }
+              });
+          }
+      });
+
+      // ── Scroll-Driven Scale Animation for Every Box of Cards ──
+      const scrollCards = document.querySelectorAll(
+          '.voter-reg-card, .pro-feature-card, .candidate-card, .stat-block, .scale-card, .interactive-section-card, .telemetry-card, .card'
+      );
+      scrollCards.forEach(card => {
+          // If already in hero/initial viewport, keep visible
+          const rect = card.getBoundingClientRect();
+          if (rect.top < window.innerHeight * 0.75) return;
+
+          gsap.fromTo(card,
+              { scale: 0.88, opacity: 0 },
+              {
+                  scale: 1,
+                  opacity: 1,
+                  ease: "power2.out",
+                  scrollTrigger: {
+                      trigger: card,
+                      start: "top 95%",
+                      end: "top 62%",
+                      scrub: 0.6,
+                      invalidateOnRefresh: true
+                  }
+              }
+          );
+      });
+  }
+
+  /* ── 2. Split Flap Countdown & Clock ── */
+  if (window.sfInit) window.sfInit();
+
+  var days   = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  var months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+
+  function tickClock() {
+    var now  = new Date();
+    var h24  = now.getHours();
+    var ampm = h24 >= 12 ? 'PM' : 'AM';
+    var h12  = h24 % 12 || 12;
+    var m    = now.getMinutes();
+    var s    = now.getSeconds();
+
+    if (window.sfSetUnit) {
+        window.sfSetUnit('hc-t-h', h12);
+        window.sfSetUnit('hc-t-m', m);
+        window.sfSetUnit('hc-t-s', s);
+    }
+
+    var ampmEl = document.getElementById('hc-ampm');
+    var dateEl = document.getElementById('hc-date');
+    if (ampmEl) ampmEl.textContent = ampm;
+    if (dateEl) dateEl.textContent = days[now.getDay()] + ' · ' + months[now.getMonth()] + ' ' + (now.getDate() < 10 ? '0' : '') + now.getDate() + ', ' + now.getFullYear();
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  /* ── 3. Election Countdown ── */
+  var startIso  = '{{ voting_start }}';
+  var endIso    = '{{ voting_end }}';
+  var statusStr = '{{ voting_status }}';
+
+  if ((statusStr === 'active' || statusStr === 'scheduled') && (startIso || endIso)) {
+    var targetMs = (statusStr === 'active') ? new Date(endIso).getTime() : new Date(startIso).getTime();
+
+    function tickCountdown() {
+      var now   = Date.now();
+      var delta = targetMs - now;
+      if (delta <= 0) { window.location.reload(); return; }
+
+      if (window.sfSetUnit) {
+          var totalSec = Math.floor(delta / 1000);
+          window.sfSetUnit('hc-c-d', Math.floor(totalSec / 86400));
+          window.sfSetUnit('hc-c-h', Math.floor(totalSec / 3600) % 24);
+          window.sfSetUnit('hc-c-m', Math.floor(totalSec / 60) % 60);
+          window.sfSetUnit('hc-c-s', totalSec % 60);
+      }
+    }
+    tickCountdown();
+    setInterval(tickCountdown, 1000);
+  }
+
+  /* ── 4. Scroll-Spy (One-by-One Section Tracker) ── */
+  var sections = document.querySelectorAll('.scroll-section');
+  var dotItems = document.querySelectorAll('.dot-item');
+  var navLinks = document.querySelectorAll('.taskbar-link');
+
+  var observerOptions = {
+      root: null,
+      rootMargin: '-20% 0px -40% 0px',
+      threshold: 0
+  };
+
+  var sectionObserver = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+          if (entry.isIntersecting) {
+              var currentId = entry.target.id;
+
+              // Update Vertical Side Dots
+              dotItems.forEach(function(dot) {
+                  if (dot.getAttribute('data-target') === currentId) {
+                      dot.classList.add('active');
+                  } else {
+                      dot.classList.remove('active');
+                  }
+              });
+
+              // Update Top Taskbar Active State
+              navLinks.forEach(function(link) {
+                  if (link.getAttribute('data-section') === currentId) {
+                      link.classList.add('active');
+                  } else {
+                      link.classList.remove('active');
+                  }
+              });
+          }
+      });
+  }, observerOptions);
+
+  sections.forEach(function(sec) {
+      sectionObserver.observe(sec);
+  });
+
+  /* ── 5. Date of Birth 18+ enforcement on Registration Form ── */
+  var today = new Date();
+  var maxDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+  var dobInput = document.getElementById('sec_reg_dob');
+  if (dobInput) {
+      dobInput.max = maxDate.toISOString().split('T')[0];
+      var dobHint = document.getElementById('sec-dob-hint');
+      if (dobHint) {
+          dobHint.textContent = `You must be born on or before ${maxDate.toDateString()} to be eligible.`;
+      }
+  }
+
+})();
+
+/* ── Section Camera & Photo Capture Logic ── */
+var secStream = null;
+var secCapturedImage = null;
+
+function showSecRegAlert(msg, type='danger') {
+    var box = document.getElementById('sec-reg-alert');
+    if (box) {
+        box.innerHTML = `<div class="alert alert-${type}" style="margin-bottom:1.25rem;">${msg}</div>`;
+    }
+}
+
+async function startSectionCamera() {
+    try {
+        secStream = await navigator.mediaDevices.getUserMedia({
+            video: { width: 640, height: 480, facingMode: 'user' }
+        });
+        var video = document.getElementById('sec-video');
+        video.srcObject = secStream;
+        document.getElementById('sec-webcam-box').style.display = 'block';
+        document.getElementById('secStartCamBtn').style.display = 'none';
+        document.getElementById('sec-cam-live-controls').style.display = 'flex';
+        document.getElementById('sec-captured-preview').style.display = 'none';
+    } catch (e) {
+        showSecRegAlert('Camera access denied. Please grant webcam permissions to capture your biometric face.');
+    }
+}
+
+function cancelSectionCamera() {
+    if (secStream) {
+        secStream.getTracks().forEach(track => track.stop());
+        secStream = null;
+    }
+    document.getElementById('sec-webcam-box').style.display = 'none';
+    document.getElementById('sec-cam-live-controls').style.display = 'none';
+    document.getElementById('secStartCamBtn').style.display = 'inline-flex';
+    if (secCapturedImage) {
+        document.getElementById('sec-captured-preview').style.display = 'block';
+    }
+}
+
+function captureSectionPhoto() {
+    var video = document.getElementById('sec-video');
+    var canvas = document.getElementById('sec-canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    var ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    secCapturedImage = canvas.toDataURL('image/jpeg', 0.9);
+
+    var previewImg = document.getElementById('sec-preview-img');
+    previewImg.src = secCapturedImage;
+    document.getElementById('sec-captured-preview').style.display = 'block';
+    document.getElementById('sec-webcam-box').style.display = 'none';
+    document.getElementById('sec-cam-live-controls').style.display = 'none';
+    document.getElementById('secStartCamBtn').style.display = 'none';
+
+    if (secStream) {
+        secStream.getTracks().forEach(track => track.stop());
+        secStream = null;
+    }
+
+    var submitBtn = document.getElementById('secSubmitBtn');
+    if (submitBtn) submitBtn.disabled = false;
+}
+
+async function handleSectionRegister(e) {
+    e.preventDefault();
+    if (!secCapturedImage) {
+        showSecRegAlert('Please capture your biometric face photo first.');
+        return;
+    }
+
+    var submitBtn = document.getElementById('secSubmitBtn');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span> PROCESSING...';
+
+    var payload = {
+        name: document.getElementById('sec_reg_name').value.trim(),
+        email: document.getElementById('sec_reg_email').value.trim(),
+        voter_id: document.getElementById('sec_reg_voter_id').value.trim(),
+        date_of_birth: document.getElementById('sec_reg_dob').value.trim(),
+        face_image: secCapturedImage
+    };
+
+    // Client-side age validation
+    var dob = new Date(payload.date_of_birth);
+    var ageDiff = Date.now() - dob.getTime();
+    var ageDate = new Date(ageDiff);
+    var age = Math.abs(ageDate.getUTCFullYear() - 1970);
+    if (age < 18) {
+        showSecRegAlert(`⚠️ You must be at least 18 years old to register. Your age is ${age} years.`);
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'REGISTER &amp; SUBMIT';
+        return;
+    }
+
+    try {
+        var res = await fetch("{{ url_for('register') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            showSecRegAlert('🎉 ' + data.message, 'success');
+            document.getElementById('secRegisterForm').reset();
+            submitBtn.innerHTML = '✅ REGISTERED SUCCESSFULLY';
+            // Scroll to voting after 1.2s
+            setTimeout(function() {
+                var voteSec = document.getElementById('section-vote');
+                if (voteSec) {
+                    voteSec.scrollIntoView({ behavior: 'smooth' });
+                }
+            }, 1400);
+        } else {
+            showSecRegAlert(data.message, 'danger');
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = 'REGISTER &amp; SUBMIT';
+        }
+    } catch (err) {
+        showSecRegAlert('Registration error occurred. Please try again.', 'danger');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = 'REGISTER &amp; SUBMIT';
+    }
+}
+
+/* ── Section Quick Voter Login Logic ── */
+async function handleSectionLogin(e) {
+    e.preventDefault();
+    var email = document.getElementById('sec_login_email').value.trim();
+    var voter_id = document.getElementById('sec_login_voter_id').value.trim();
+    var btn = document.getElementById('secLoginBtn');
+    var alertBox = document.getElementById('sec-vote-alert');
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:6px;"></span> Generating OTP Token...';
+
+    try {
+        var res = await fetch("{{ url_for('login') }}", {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email: email, voter_id: voter_id })
+        });
+        var data = await res.json();
+
+        if (data.success) {
+            alertBox.innerHTML = `<div class="alert alert-success" style="margin-bottom:1rem;">✅ ${data.message}</div>`;
+            setTimeout(function() {
+                window.location.href = data.redirect || "{{ url_for('verify_otp') }}";
+            }, 800);
+        } else {
+            alertBox.innerHTML = `<div class="alert alert-danger" style="margin-bottom:1rem;">⚠️ ${data.message}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = 'LOGIN &amp; SEND OTP';
+        }
+    } catch (err) {
+        alertBox.innerHTML = `<div class="alert alert-danger" style="margin-bottom:1rem;">Connection error. Please try again.</div>`;
+        btn.disabled = false;
+        btn.innerHTML = 'LOGIN &amp; SEND OTP';
+    }
+}
+</script>
+
+<style>
+/* ── Hero Title: Glow → Flicker → Glow ── */
+#heroTitle {
+    opacity: 0;
+    text-shadow: none;
+    transition: opacity 0.5s ease;
+}
+
+/* Steady breathing golden glow — matching time counter glowing effect */
+@keyframes heroGoldenGlow {
+    0%, 100% {
+        text-shadow:
+            0 0 10px #ffffff,
+            0 0 20px rgba(255, 215, 64, 0.9),
+            0 0 38px rgba(245, 158, 11, 0.75),
+            0 0 60px rgba(217, 119, 6, 0.45);
+    }
+    50% {
+        text-shadow:
+            0 0 14px #ffffff,
+            0 0 24px rgba(255, 230, 90, 1),
+            0 0 42px rgba(251, 191, 36, 0.9),
+            0 0 70px rgba(245, 158, 11, 0.6);
+    }
+}
+
+#heroTitle.golden-glow {
+    opacity: 1;
+    animation: heroGoldenGlow 2.4s ease-in-out infinite;
+}
+</style>
+
+<script>
+(function () {
+    var el = document.getElementById('heroTitle');
+    if (!el) return;
+
+    /* ── Glow values (mirroring time counter multi-tier aura in golden palette) ── */
+    var GLOW_BRIGHT = [
+        '0 0 14px #ffffff',
+        '0 0 24px rgba(255, 230, 90, 1)',
+        '0 0 42px rgba(251, 191, 36, 0.92)',
+        '0 0 70px rgba(245, 158, 11, 0.65)'
+    ].join(', ');
+
+    var GLOW_OFF = 'none';
+
+    /* Step 1 — appear with glow after word-slide-up */
+    setTimeout(function () {
+        el.classList.add('golden-glow');          /* continuous glow starts */
+
+        /* Step 2 — after 1 s, fire the two bright flickers */
+        setTimeout(function () {
+            /* pause the CSS animation so flicker is clean */
+            el.classList.remove('golden-glow');
+            el.style.transition = 'none';
+
+            /* Flash 1 */
+            el.style.textShadow = GLOW_BRIGHT;
+            el.style.opacity    = '1';
+
+            setTimeout(function () {
+                /* Off 1 */
+                el.style.textShadow = GLOW_OFF;
+                el.style.opacity    = '0.05';
+
+                setTimeout(function () {
+                    /* Flash 2 */
+                    el.style.textShadow = GLOW_BRIGHT;
+                    el.style.opacity    = '1';
+
+                    setTimeout(function () {
+                        /* Off 2 */
+                        el.style.textShadow = GLOW_OFF;
+                        el.style.opacity    = '0.05';
+
+                        setTimeout(function () {
+                            /* Resume continuous glow */
+                            el.style.textShadow = '';
+                            el.style.opacity    = '';
+                            el.style.transition = '';
+                            el.classList.add('golden-glow');
+                        }, 65);   /* off-2 hold */
+
+                    }, 105);  /* flash-2 hold */
+
+                }, 65);   /* off-1 hold */
+
+            }, 95);   /* flash-1 hold */
+
+        }, 1000); /* wait 1 s after glow starts */
+
+    }, 420); /* word slide-up delay */
+
+})();
+</script>
+{% endblock %}
