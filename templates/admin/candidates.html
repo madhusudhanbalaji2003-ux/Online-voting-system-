@@ -1,0 +1,373 @@
+{% extends "base.html" %}
+{% block title %}Candidate Management — SecureVote{% endblock %}
+
+{% block head %}
+<style>
+  .cand-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  /* Add Candidate Card */
+  .add-card {
+    padding: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .add-card h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .add-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 120px 1fr auto;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+
+  @media (max-width: 860px) {
+    .add-form-grid { grid-template-columns: 1fr 1fr; }
+  }
+
+  @media (max-width: 520px) {
+    .add-form-grid { grid-template-columns: 1fr; }
+  }
+
+  .form-field label {
+    display: block;
+    font-size: 0.78rem;
+    color: var(--text-secondary, #a0a0b8);
+    margin-bottom: 6px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .form-field input[type="text"],
+  .form-field input[type="file"] {
+    width: 100%;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(124,58,237,0.3);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 0.95rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    outline: none;
+    box-sizing: border-box;
+  }
+
+  .form-field input[type="text"]:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 3px rgba(124,58,237,0.2);
+  }
+
+  .form-field input[type="file"] {
+    cursor: pointer;
+    padding: 8px 12px;
+  }
+
+  /* Photo preview */
+  .photo-preview-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  #photo-preview {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid rgba(124,58,237,0.6);
+    display: none;
+  }
+
+  #photo-placeholder {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(124,58,237,0.1);
+    border: 2px dashed rgba(124,58,237,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+  }
+
+  .btn-add-candidate {
+    background: linear-gradient(135deg, #7c3aed, #a855f7);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 10px 22px;
+    font-size: 0.92rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s, box-shadow 0.2s;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.4);
+    white-space: nowrap;
+  }
+
+  .btn-add-candidate:hover {
+    opacity: 0.9;
+    transform: translateY(-1px);
+  }
+
+  .btn-add-candidate:active { transform: scale(0.97); }
+
+  /* Candidate grid */
+  .section-title {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: var(--text-secondary, #a0a0b8);
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .count-badge {
+    background: rgba(124,58,237,0.25);
+    color: #a78bfa;
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 0.78rem;
+    font-weight: 700;
+  }
+
+  .candidates-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+    gap: 1.25rem;
+  }
+
+  .candidate-card {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cand-photo-area {
+    height: 155px;
+    background: linear-gradient(135deg, rgba(124,58,237,0.2), rgba(16,16,32,0.9));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .cand-photo-area img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .cand-photo-placeholder {
+    font-size: 3.8rem;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,0.5));
+  }
+
+  .cand-body {
+    padding: 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .cand-name { font-size: 1rem; font-weight: 700; color: #fff; }
+  .cand-party { font-size: 0.8rem; color: #a78bfa; font-weight: 600; }
+  .cand-symbol { font-size: 1.3rem; margin-top: 4px; }
+  .cand-id { font-size: 0.7rem; color: rgba(255,255,255,0.25); margin-top: auto; padding-top: 6px; }
+
+  .cand-actions {
+    padding: 0.75rem 1rem;
+    border-top: 1px solid rgba(255,255,255,0.06);
+  }
+
+  .btn-delete {
+    width: 100%;
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.28);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+  }
+
+  .btn-delete:hover {
+    background: rgba(239,68,68,0.28);
+    border-color: rgba(239,68,68,0.55);
+  }
+
+  .btn-delete:active { transform: scale(0.97); }
+
+  .empty-state {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 3.5rem;
+    color: rgba(255,255,255,0.3);
+  }
+
+  .empty-state .empty-icon { font-size: 3.5rem; margin-bottom: 1rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container fade-in">
+
+  <!-- Page Header -->
+  <div class="cand-page-header">
+    <div>
+      <h1 style="font-size:1.6rem;margin:0;">🧑‍💼 Candidate Management</h1>
+      {% if election %}
+      <p style="color:var(--text-secondary,#a0a0b8);margin-top:4px;font-size:0.88rem;">
+        Active election: <strong style="color:#a78bfa;">{{ election['title'] }}</strong>
+      </p>
+      {% endif %}
+    </div>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline">← Dashboard</a>
+  </div>
+
+  <!-- Add Candidate Form -->
+  <div class="add-card">
+    <h2>➕ Add New Candidate</h2>
+
+    {% if not election %}
+    <p style="color:#f87171;">⚠️ No active election found. Create an election first.</p>
+    {% else %}
+    <form
+      action="{{ url_for('admin_add_candidate') }}"
+      method="POST"
+      enctype="multipart/form-data"
+      id="add-candidate-form"
+    >
+      <div class="add-form-grid">
+
+        <div class="form-field">
+          <label for="cand-name">Candidate Name *</label>
+          <input type="text" id="cand-name" name="name" required
+                 placeholder="e.g. Jane Doe" autocomplete="off">
+        </div>
+
+        <div class="form-field">
+          <label for="cand-party">Party / Alliance</label>
+          <input type="text" id="cand-party" name="party"
+                 placeholder="e.g. Democratic Party" autocomplete="off">
+        </div>
+
+        <div class="form-field">
+          <label for="cand-symbol">Symbol</label>
+          <input type="text" id="cand-symbol" name="symbol"
+                 placeholder="🗳️" style="text-align:center;font-size:1.2rem;">
+        </div>
+
+        <div class="form-field">
+          <label for="cand-photo">Upload Photo</label>
+          <input type="file" id="cand-photo" name="photo"
+                 accept="image/jpeg,image/png,image/webp,image/gif">
+        </div>
+
+        <div class="photo-preview-wrap">
+          <div id="photo-placeholder">📷</div>
+          <img id="photo-preview" src="#" alt="Preview">
+          <button type="submit" class="btn-add-candidate">✅ Add</button>
+        </div>
+
+      </div>
+    </form>
+    {% endif %}
+  </div>
+
+  <!-- Candidate List -->
+  <div class="section-title">
+    👥 Registered Candidates
+    <span class="count-badge">{{ candidates | length }}</span>
+  </div>
+
+  <div class="candidates-grid">
+    {% for c in candidates %}
+    <div class="candidate-card">
+
+      <div class="cand-photo-area">
+        {% if c['photo'] %}
+        <img src="{{ url_for('static', filename='uploads/candidates/' ~ c['photo']) }}"
+             alt="{{ c['name'] }}" loading="lazy">
+        {% else %}
+        <div class="cand-photo-placeholder">
+          {{ c['symbol'] if c['symbol'] else '🧑‍💼' }}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="cand-body">
+        <div class="cand-name">{{ c['name'] }}</div>
+        {% if c['party'] %}<div class="cand-party">🏳️ {{ c['party'] }}</div>{% endif %}
+        {% if c['symbol'] %}<div class="cand-symbol">{{ c['symbol'] }}</div>{% endif %}
+        <div class="cand-id">ID #{{ c['id'] }}</div>
+      </div>
+
+      <div class="cand-actions">
+        <form
+          action="{{ url_for('admin_delete_candidate', candidate_id=c['id']) }}"
+          method="POST"
+          data-cand-name="{{ c['name'] }}"
+          onsubmit="return confirmDelete(this);"
+        >
+          <button type="submit" class="btn-delete">🗑️ Delete Candidate</button>
+        </form>
+      </div>
+
+    </div>
+    {% endfor %}
+
+    {% if not candidates %}
+    <div class="empty-state">
+      <div class="empty-icon">🧑‍💼</div>
+      <p>No candidates yet. Use the form above to add the first one.</p>
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Live photo preview
+  const photoInput  = document.getElementById('cand-photo');
+  const photoImg    = document.getElementById('photo-preview');
+  const placeholder = document.getElementById('photo-placeholder');
+
+  if (photoInput) {
+    photoInput.addEventListener('change', function () {
+      const file = this.files[0];
+      if (file && file.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          photoImg.src = e.target.result;
+          photoImg.style.display    = 'block';
+          placeholder.style.display = 'none';
+        };
+        reader.readAsDataURL(file);
+      } else {
+        photoImg.style.display    = 'none';
+        placeholder.style.display = 'flex';
+      }
+    });
+  }
+  function confirmDelete(form) {
+    var name = form.dataset.candName || 'this candidate';
+    return confirm('Delete ' + name + '? This cannot be undone.');
+  }
+</script>
+{% endblock %}

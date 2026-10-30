@@ -1,0 +1,368 @@
+{% extends "base.html" %}
+{% block title %}{% if reason == 'not_started' %}Voting Hasn't Started{% else %}Voting Period Ended{% endif %} — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container-sm fade-in" style="text-align:center;padding-top:3rem;padding-bottom:4rem;">
+
+  <!-- Animated Icon -->
+  <div class="vc-icon-wrap">
+    {% if reason == 'not_started' %}
+    <div class="vc-orbit-ring"></div>
+    <div class="vc-icon">⏳</div>
+    {% else %}
+    <div class="vc-orbit-ring vc-orbit-ring--ended"></div>
+    <div class="vc-icon">🔒</div>
+    {% endif %}
+  </div>
+
+  {% if reason == 'not_started' %}
+  <!-- NOT STARTED -->
+  <h1 class="vc-title">Voting Hasn't Started Yet</h1>
+  <p class="vc-subtitle">
+    The polls open on
+    <strong style="color:#a78bfa;">{{ start[:16].replace('T',' ') }}</strong>.
+    Come back then to cast your vote!
+  </p>
+
+  <!-- Countdown timer -->
+  <div class="countdown-wrap" id="countdown-wrap">
+    <div class="flip-unit">
+      <div class="flip-top" id="cd-days">00</div>
+      <div class="flip-label">Days</div>
+    </div>
+    <div class="flip-sep">:</div>
+    <div class="flip-unit">
+      <div class="flip-top" id="cd-hours">00</div>
+      <div class="flip-label">Hours</div>
+    </div>
+    <div class="flip-sep">:</div>
+    <div class="flip-unit">
+      <div class="flip-top" id="cd-mins">00</div>
+      <div class="flip-label">Minutes</div>
+    </div>
+    <div class="flip-sep">:</div>
+    <div class="flip-unit">
+      <div class="flip-top" id="cd-secs">00</div>
+      <div class="flip-label">Seconds</div>
+    </div>
+  </div>
+
+  <!-- Progress arc -->
+  <div class="vc-progress-wrap">
+    <svg class="vc-progress-arc" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+      <circle class="vc-arc-bg" cx="60" cy="60" r="52" />
+      <circle class="vc-arc-fill" id="arc-fill" cx="60" cy="60" r="52"
+              stroke-dasharray="326.73" stroke-dashoffset="326.73" />
+    </svg>
+    <div class="vc-arc-inner">
+      <span id="arc-pct">0%</span>
+      <span class="vc-arc-label">elapsed</span>
+    </div>
+  </div>
+
+  {% else %}
+  <!-- ENDED -->
+  <h1 class="vc-title" style="color:#f87171;">Voting Period Has Ended</h1>
+  <p class="vc-subtitle">
+    The voting window closed on
+    <strong style="color:#f87171;">{{ end[:16].replace('T',' ') }}</strong>.
+    Results will be published by the administrator.
+  </p>
+
+  <div class="vc-ended-badge">
+    <div class="vc-ended-row">
+      <span class="vc-ended-label">Opened</span>
+      <span class="vc-ended-value">{{ start[:16].replace('T',' ') }}</span>
+    </div>
+    <div class="vc-ended-divider"></div>
+    <div class="vc-ended-row">
+      <span class="vc-ended-label">Closed</span>
+      <span class="vc-ended-value" style="color:#f87171;">{{ end[:16].replace('T',' ') }}</span>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Action buttons -->
+  <div style="margin-top:2.5rem;display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+    <a href="{{ url_for('results') }}" class="btn btn-outline">📊 View Results</a>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">🏠 Go Home</a>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var startIso = '{{ start }}';
+  var endIso   = '{{ end }}';
+  var reason   = '{{ reason }}';
+
+  if (reason !== 'not_started' || !startIso) return;
+
+  var targetMs = new Date(startIso).getTime();
+  var totalMs  = endIso ? (new Date(endIso).getTime() - new Date(startIso).getTime()) : null;
+
+  var cdDays  = document.getElementById('cd-days');
+  var cdHours = document.getElementById('cd-hours');
+  var cdMins  = document.getElementById('cd-mins');
+  var cdSecs  = document.getElementById('cd-secs');
+  var arcFill = document.getElementById('arc-fill');
+  var arcPct  = document.getElementById('arc-pct');
+  var ARC_LEN = 326.73;
+
+  var prevVals = {};
+  function setUnit(el, id, val) {
+    var padded = String(val).padStart(2, '0');
+    if (prevVals[id] === padded) return;
+    prevVals[id] = padded;
+    el.classList.remove('flip-animate');
+    void el.offsetWidth;
+    el.textContent = padded;
+    el.classList.add('flip-animate');
+  }
+
+  function tick() {
+    var now   = Date.now();
+    var delta = targetMs - now;
+    if (delta <= 0) { window.location.reload(); return; }
+
+    var totalSec = Math.floor(delta / 1000);
+    setUnit(cdDays,  'days',  Math.floor(totalSec / 86400));
+    setUnit(cdHours, 'hours', Math.floor(totalSec / 3600) % 24);
+    setUnit(cdMins,  'mins',  Math.floor(totalSec / 60) % 60);
+    setUnit(cdSecs,  'secs',  totalSec % 60);
+
+    if (arcFill && totalMs) {
+      var elapsed = (Date.now() - (targetMs - totalMs - 0));
+      /* show what fraction of the window before voting start has elapsed */
+      var windowBefore = targetMs - (Date.now() - elapsed);
+      var pct = Math.min(1, Math.max(0, 1 - (delta / totalMs)));
+      arcFill.style.strokeDashoffset = ARC_LEN * (1 - pct);
+      arcPct.textContent = Math.round(pct * 100) + '%';
+    }
+  }
+
+  tick();
+  setInterval(tick, 1000);
+})();
+</script>
+
+<style>
+/* Voting Closed page styles */
+.vc-icon-wrap {
+  position: relative;
+  width: 110px; height: 110px;
+  margin: 0 auto 2rem;
+  display: flex; align-items: center; justify-content: center;
+}
+.vc-orbit-ring {
+  position: absolute; inset: 0;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  border-top-color: #a78bfa;
+  border-right-color: #7c3aed;
+  animation: orbitSpin 2.4s linear infinite;
+  box-shadow: 0 0 18px rgba(124,58,237,0.3);
+}
+.vc-orbit-ring::after {
+  content: '';
+  position: absolute; inset: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(167,139,250,0.15);
+  animation: orbitSpin 4s linear infinite reverse;
+}
+.vc-orbit-ring--ended {
+  border-top-color: #f87171;
+  border-right-color: #ef4444;
+  box-shadow: 0 0 18px rgba(239,68,68,0.3);
+  animation: orbitSpin 4s linear infinite reverse;
+}
+@keyframes orbitSpin { to { transform: rotate(360deg); } }
+
+.vc-icon {
+  font-size: 3rem;
+  animation: floatIcon 3s ease-in-out infinite;
+  z-index: 1;
+  filter: drop-shadow(0 0 12px rgba(124,58,237,0.5));
+}
+@keyframes floatIcon {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-8px); }
+}
+
+.vc-title {
+  font-size: 2rem; font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 0.75rem;
+  animation: pageFadeInUp 0.5s 0.1s both;
+}
+.vc-subtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  max-width: 420px;
+  margin: 0 auto 2.5rem;
+  line-height: 1.7;
+  animation: pageFadeInUp 0.5s 0.2s both;
+}
+
+/* Countdown flip segments */
+.countdown-wrap {
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.5rem; margin: 0 auto 2rem;
+  flex-wrap: wrap;
+  animation: pageFadeInUp 0.5s 0.3s both;
+}
+.flip-unit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.flip-top {
+  width: 82px;
+  height: 94px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: #ffffff;
+  background: linear-gradient(180deg, #161822 0%, #090a0f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.35),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.8),
+    0 10px 32px rgba(0, 0, 0, 0.95),
+    0 0 20px rgba(124, 58, 237, 0.3),
+    0 0 40px rgba(167, 139, 250, 0.15);
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 0.95),
+    0 0 18px rgba(167, 139, 250, 0.8),
+    0 0 32px rgba(124, 58, 237, 0.55);
+  position: relative;
+  overflow: hidden;
+  letter-spacing: -0.5px;
+}
+.flip-top::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.9);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.18);
+  z-index: 2;
+}
+.flip-top::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 48%;
+  background: linear-gradient(180deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.01) 100%);
+  pointer-events: none;
+}
+@keyframes flipIn {
+  0%   { transform: translateY(-24px) scale(0.9); opacity: 0; }
+  60%  { transform: translateY(3px) scale(1.02); opacity: 1; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+.flip-animate { animation: flipIn 0.32s cubic-bezier(0.16,1,0.3,1); }
+.flip-label {
+  font-family: inherit;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #c4b5fd;
+  text-shadow: 0 0 8px rgba(167, 139, 250, 0.4);
+}
+.flip-sep {
+  font-family: inherit;
+  font-size: 2.2rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin-bottom: 24px;
+  opacity: 0.95;
+  text-shadow:
+    0 0 8px rgba(255, 255, 255, 1),
+    0 0 18px rgba(167, 139, 250, 0.9),
+    0 0 32px rgba(124, 58, 237, 0.7);
+  animation: blinkSep 1s step-end infinite;
+}
+@keyframes blinkSep { 0%,100%{opacity:0.95;} 50%{opacity:0.2;} }
+
+/* Progress arc */
+.vc-progress-wrap {
+  position: relative;
+  width: 130px; height: 130px;
+  margin: 0 auto 2rem;
+  animation: pageFadeInUp 0.5s 0.4s both;
+}
+.vc-progress-arc { width: 100%; height: 100%; transform: rotate(-90deg); }
+.vc-arc-bg  { fill: none; stroke: rgba(124,58,237,0.1); stroke-width: 7; }
+.vc-arc-fill {
+  fill: none;
+  stroke: #7c3aed;
+  stroke-width: 7;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+  filter: drop-shadow(0 0 6px rgba(124,58,237,0.6));
+}
+.vc-arc-inner {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: 2px;
+}
+.vc-arc-inner span:first-child {
+  font-size: 1.4rem; font-weight: 800;
+  background: var(--gradient-1);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.vc-arc-label {
+  font-size: 0.6rem; text-transform: uppercase;
+  letter-spacing: 1.2px; color: var(--text-muted);
+}
+
+/* Ended badge */
+.vc-ended-badge {
+  background: transparent;
+  border: 1px solid rgba(239,68,68,0.28);
+  border-radius: 16px;
+  padding: 1.5rem 2rem;
+  max-width: 340px; margin: 0 auto;
+  backdrop-filter: none;
+  animation: pageFadeInUp 0.5s 0.3s both;
+  box-shadow: none;
+}
+.vc-ended-row {
+  display: flex; justify-content: space-between;
+  align-items: center; gap: 1rem; padding: 0.45rem 0;
+}
+.vc-ended-label {
+  font-size: 0.75rem; text-transform: uppercase;
+  letter-spacing: 1px; color: var(--text-muted);
+}
+.vc-ended-value {
+  font-size: 0.92rem; font-weight: 600; color: var(--text-primary);
+}
+.vc-ended-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(239,68,68,0.25), transparent);
+  margin: 0.25rem 0;
+}
+
+@media (max-width: 480px) {
+  .flip-top { width: 60px; height: 68px; font-size: 1.7rem; border-radius: 10px; }
+  .vc-title { font-size: 1.5rem; }
+  .flip-sep { font-size: 1.6rem; }
+}
+</style>
+{% endblock %}

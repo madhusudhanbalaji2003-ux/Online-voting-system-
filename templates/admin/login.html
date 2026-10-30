@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Admin Login — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container-sm fade-in">
+    <div class="card" style="margin-top:3rem;">
+        <div class="card-header" style="text-align:center;">
+            <h2>🛡️ Admin Panel</h2>
+            <p>Enter admin credentials to access the dashboard.</p>
+        </div>
+        <div id="alert-box"></div>
+        <form id="adminForm">
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" id="username" class="form-control" placeholder="admin" required>
+            </div>
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" class="form-control" placeholder="••••••••" required>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block btn-lg">Login →</button>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('adminForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    try {
+        const res = await fetch('/admin/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                username: document.getElementById('username').value,
+                password: document.getElementById('password').value
+            })
+        });
+        const result = await res.json();
+        if (result.success) {
+            if (window.smoothNavigate) {
+                window.smoothNavigate(result.redirect);
+            } else {
+                window.location.href = result.redirect;
+            }
+        } else {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+        }
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Network error.</div>';
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% block title %}Vote Confirmed — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container-sm">
+    <div class="vote-success-wrapper fade-in">
+
+        <!-- Confetti burst (CSS only) -->
+        <div class="confetti-ring" aria-hidden="true">
+            <span></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span>
+        </div>
+
+        <!-- Trophy / checkmark icon -->
+        <div class="vs-icon-circle">
+            <svg width="52" height="52" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="20 6 9 17 4 12"/>
+            </svg>
+        </div>
+
+        <!-- Headline -->
+        <h1 class="vs-headline">Congratulations!</h1>
+        <p class="vs-tagline">You have successfully cast your vote.</p>
+
+        <!-- Timestamp card -->
+        <div class="vs-timestamp-card">
+            <div class="vs-ts-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round" style="opacity:.7">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+                Voted on
+            </div>
+            <div class="vs-ts-value">{{ voted_at }}</div>
+        </div>
+
+        <!-- Privacy notice -->
+        <div class="vs-privacy-note">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+                 stroke="currentColor" stroke-width="2.2"
+                 stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            Your ballot is private. The choice you made will never be disclosed.
+        </div>
+
+        <!-- Blockchain receipt (collapsible) -->
+        <details class="vs-receipt">
+            <summary>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.2"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                </svg>
+                Blockchain Receipt
+                <svg class="vs-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5"
+                     stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"/>
+                </svg>
+            </summary>
+            <div class="vs-receipt-body">
+                <div class="vs-hash-label">Block Hash (Immutable Receipt)</div>
+                <div class="vs-hash-value">{{ block_hash }}</div>
+                <p class="vs-hash-note">
+                    🔒 This cryptographic hash is your tamper-proof vote receipt recorded on the blockchain.
+                    It confirms your vote was counted without revealing your choice.
+                </p>
+            </div>
+        </details>
+
+        <!-- Actions -->
+        <div class="vs-actions">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">🏠 Back to Home</a>
+            <a href="{{ url_for('results') }}" class="btn btn-outline">📊 View Results</a>
+        </div>
+
+    </div>
+</div>
+
+<style>
+/* ────────────────────────────────────────────
+   Vote Success — Premium Acknowledgement Page
+   ──────────────────────────────────────────── */
+.vote-success-wrapper {
+    max-width: 520px;
+    margin: 3rem auto 5rem;
+    padding: 0 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+}
+
+/* ── Confetti ring ── */
+.confetti-ring {
+    position: absolute;
+    top: -20px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 160px;
+    height: 160px;
+    pointer-events: none;
+    z-index: 0;
+}
+.confetti-ring span {
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    top: 50%;
+    left: 50%;
+    transform-origin: 0 0;
+    animation: confettiBurst 0.75s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+}
+.confetti-ring span:nth-child(1)  { background: #38bdf8; transform: rotate(0deg)   translateX(68px); animation-delay: 0.05s; }
+.confetti-ring span:nth-child(2)  { background: #a78bfa; transform: rotate(45deg)  translateX(68px); animation-delay: 0.10s; }
+.confetti-ring span:nth-child(3)  { background: #34d399; transform: rotate(90deg)  translateX(68px); animation-delay: 0.15s; }
+.confetti-ring span:nth-child(4)  { background: #fbbf24; transform: rotate(135deg) translateX(68px); animation-delay: 0.20s; }
+.confetti-ring span:nth-child(5)  { background: #fb7185; transform: rotate(180deg) translateX(68px); animation-delay: 0.25s; }
+.confetti-ring span:nth-child(6)  { background: #38bdf8; transform: rotate(225deg) translateX(68px); animation-delay: 0.10s; }
+.confetti-ring span:nth-child(7)  { background: #a78bfa; transform: rotate(270deg) translateX(68px); animation-delay: 0.05s; }
+.confetti-ring span:nth-child(8)  { background: #34d399; transform: rotate(315deg) translateX(68px); animation-delay: 0.18s; }
+
+@keyframes confettiBurst {
+    from { opacity: 0; transform: rotate(var(--r, 0deg)) translateX(0); }
+    50%  { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+/* ── Icon ── */
+.vs-icon-circle {
+    position: relative;
+    z-index: 1;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    background: conic-gradient(from 135deg, #34d399, #38bdf8, #a78bfa, #34d399);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 1.75rem;
+    box-shadow:
+        0 0 0 8px rgba(52, 211, 153, 0.12),
+        0 0 0 18px rgba(52, 211, 153, 0.06),
+        0 12px 40px rgba(52, 211, 153, 0.35);
+    animation: popIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.vs-icon-circle svg {
+    stroke: #ffffff;
+    filter: drop-shadow(0 0 6px rgba(255,255,255,0.5));
+}
+@keyframes popIn {
+    from { transform: scale(0.4); opacity: 0; }
+    to   { transform: scale(1);   opacity: 1; }
+}
+
+/* ── Headline ── */
+.vs-headline {
+    font-family: var(--font-family);
+    font-size: clamp(2rem, 5vw, 2.75rem);
+    font-weight: 800;
+    color: #ffffff;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    margin: 0 0 0.5rem;
+    animation: slideUp 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.vs-tagline {
+    font-size: 1.05rem;
+    color: var(--text-secondary);
+    margin: 0 0 2rem;
+    line-height: 1.5;
+    animation: slideUp 0.6s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Timestamp card ── */
+.vs-timestamp-card {
+    width: 100%;
+    background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(56, 189, 248, 0.07));
+    border: 1px solid rgba(52, 211, 153, 0.3);
+    border-radius: 18px;
+    padding: 1.4rem 1.6rem;
+    margin-bottom: 1.25rem;
+    animation: slideUp 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+    box-shadow: 0 0 30px rgba(52, 211, 153, 0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.vs-ts-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.68rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: #34d399;
+    margin-bottom: 0.55rem;
+}
+.vs-ts-value {
+    font-size: 1.12rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.01em;
+    line-height: 1.3;
+    text-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
+}
+
+/* ── Privacy notice ── */
+.vs-privacy-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: rgba(167, 139, 250, 0.07);
+    border: 1px solid rgba(167, 139, 250, 0.22);
+    border-radius: 9999px;
+    padding: 9px 18px;
+    font-size: 0.82rem;
+    color: #c4b5fd;
+    margin-bottom: 1.5rem;
+    animation: slideUp 0.6s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+    line-height: 1.4;
+}
+.vs-privacy-note svg { flex-shrink: 0; stroke: #c4b5fd; opacity: 0.8; }
+
+/* ── Blockchain receipt (collapsible) ── */
+.vs-receipt {
+    width: 100%;
+    background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 14px;
+    margin-bottom: 2rem;
+    animation: slideUp 0.6s 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+    overflow: hidden;
+    transition: border-color 0.25s ease;
+}
+.vs-receipt[open] { border-color: rgba(124, 58, 237, 0.4); }
+
+.vs-receipt summary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0.9rem 1.2rem;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #94a3b8;
+    cursor: pointer;
+    user-select: none;
+    letter-spacing: 0.5px;
+    list-style: none;
+    transition: color 0.2s;
+}
+.vs-receipt summary::-webkit-details-marker { display: none; }
+.vs-receipt summary:hover { color: #ffffff; }
+.vs-receipt summary svg { opacity: 0.6; }
+.vs-chevron {
+    margin-left: auto;
+    transition: transform 0.3s ease;
+}
+.vs-receipt[open] .vs-chevron { transform: rotate(180deg); }
+
+.vs-receipt-body {
+    padding: 0 1.2rem 1.2rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    padding-top: 1rem;
+    text-align: left;
+}
+.vs-hash-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 0.5rem;
+}
+.vs-hash-value {
+    font-family: 'Courier New', monospace;
+    font-size: 0.72rem;
+    color: #a78bfa;
+    word-break: break-all;
+    line-height: 1.55;
+    background: rgba(124, 58, 237, 0.06);
+    border: 1px solid rgba(124, 58, 237, 0.18);
+    border-radius: 8px;
+    padding: 10px 12px;
+}
+.vs-hash-note {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.75rem;
+    line-height: 1.5;
+}
+
+/* ── Actions ── */
+.vs-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    animation: slideUp 0.6s 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+</style>
+{% endblock %}
