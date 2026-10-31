@@ -13,7 +13,18 @@ import time
 
 # ── Persistence helpers ────────────────────────────────────────────────────────
 _IS_VERCEL = bool(os.environ.get("VERCEL"))
-_CHAIN_DB  = "/tmp/blockchain.db" if _IS_VERCEL else os.path.join(os.path.dirname(__file__), "blockchain_chain.db")
+if _IS_VERCEL:
+    _CHAIN_DB = "/tmp/blockchain.db"
+    _bundled_chain = os.path.join(os.path.dirname(__file__), "blockchain_chain.db")
+    if not os.path.exists(_CHAIN_DB) and os.path.exists(_bundled_chain):
+        try:
+            import shutil
+            shutil.copy2(_bundled_chain, _CHAIN_DB)
+            print("[Vercel] Seeded /tmp/blockchain.db from bundled blockchain_chain.db")
+        except Exception as _e:
+            print(f"[Vercel] Warning copying blockchain db: {_e}")
+else:
+    _CHAIN_DB = os.path.join(os.path.dirname(__file__), "blockchain_chain.db")
 
 
 def _get_chain_conn():

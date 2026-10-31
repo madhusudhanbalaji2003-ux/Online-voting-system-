@@ -18,9 +18,22 @@ FACE_MATCH_TOLERANCE = 1.128  # SFace L2 distance threshold
 EAR_THRESHOLD = 0.21
 BLINK_CONSEC_FRAMES = 2
 
+def _resolve_model_path(filename):
+    candidates = [
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), filename),
+        os.path.join(os.getcwd(), filename),
+        os.path.join("/var/task", filename),
+        os.path.join(os.path.dirname(__file__), filename)
+    ]
+    for p in candidates:
+        if os.path.exists(p):
+            return p
+    return candidates[0]
+
+
 # OpenCV Face Recognition Models — bundled with the project (no download needed)
-YUNET_PATH = os.path.join(os.path.dirname(__file__), "face_detection_yunet.onnx")
-SFACE_PATH = os.path.join(os.path.dirname(__file__), "face_recognition_sface.onnx")
+YUNET_PATH = _resolve_model_path("face_detection_yunet.onnx")
+SFACE_PATH = _resolve_model_path("face_recognition_sface.onnx")
 
 try:
     if os.path.exists(YUNET_PATH) and os.path.exists(SFACE_PATH):

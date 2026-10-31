@@ -49,6 +49,18 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 
+
+@app.route("/static/uploads/<path:filename>")
+def custom_static_uploads(filename):
+    """Serve uploaded images from /tmp on Vercel or local static/uploads."""
+    from flask import send_from_directory
+    if os.path.exists(os.path.join(_TMP_BASE, filename)):
+        return send_from_directory(_TMP_BASE, filename)
+    local_dir = os.path.join(_static_dir, "uploads")
+    if os.path.exists(os.path.join(local_dir, filename)):
+        return send_from_directory(local_dir, filename)
+    return ("File not found", 404)
+
 # ──────────────────────────────────────────────
 # Email Configuration (Multi-Provider: Resend, Brevo, Gmail SMTP)
 # Set these in your .env file or environment variables
@@ -104,7 +116,18 @@ blockchain = Blockchain()
 # Database Setup
 # ──────────────────────────────────────────────
 # Use /tmp on Vercel (writable); fall back to project root locally
-DB_PATH = "/tmp/database.db" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "database.db")
+if os.environ.get("VERCEL"):
+    DB_PATH = "/tmp/database.db"
+    _bundled_db = os.path.join(os.path.dirname(__file__), "database.db")
+    if not os.path.exists(DB_PATH) and os.path.exists(_bundled_db):
+        try:
+            import shutil
+            shutil.copy2(_bundled_db, DB_PATH)
+            print("[Vercel] Seeded /tmp/database.db from bundled database.db")
+        except Exception as _e:
+            print(f"[Vercel] Warning copying database: {_e}")
+else:
+    DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
 
 
 def get_db():
@@ -1863,9 +1886,11 @@ def api_results():
 # Run
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    is_prod = bool(os.environ.get("PORT") or os.environ.get("RENDER") or os.environ.get("RAILWAY_STATIC_URL"))
     print("\n" + "=" * 60)
     print("  SecureVote - Online Voting System")
     print("  Face Recognition + Liveness + Blockchain")
-    print("  http://127.0.0.1:5000")
+    print(f"  Listening on http://0.0.0.0:{port}")
     print("=" * 60 + "\n")
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    app.run(host="0.0.0.0", port=port, debug=not is_prod)
