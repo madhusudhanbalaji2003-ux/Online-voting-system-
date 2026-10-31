@@ -28,10 +28,9 @@ ENV/
 instance/
 .webassets-cache
 
-# Local voter database and uploaded voter/candidate images
-/database.db
-/blockchain_chain.db
+# Uploaded voter/candidate images (not needed in repo)
 /static/uploads/
+# NOTE: database.db and blockchain_chain.db ARE committed as seed data for Vercel
 
 # Face model files (large binaries — tracked separately if needed)
 # face_detection_yunet.onnx

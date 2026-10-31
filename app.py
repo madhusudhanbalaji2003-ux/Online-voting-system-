@@ -56,7 +56,7 @@ _IS_SERVERLESS = bool(
 _IS_VERCEL = _IS_SERVERLESS
 
 # Use /tmp on Vercel (read-only filesystem outside /tmp); fall back to static/ locally
-_static_dir = str(app.static_folder or "static")
+_static_dir = app.static_folder if app.static_folder is not None else os.path.join(_BASE_DIR, "static")
 _TMP_BASE = "/tmp" if _IS_SERVERLESS else os.path.join(_static_dir, "uploads")
 app.config["UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "faces")
 app.config["CANDIDATE_UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "candidates")
@@ -600,10 +600,10 @@ def schedule_voting_start_job(election_id, start_dt):
         _scheduler.remove_job(job_id)
     # Only schedule if start_dt is in the future
     if start_dt > datetime.now():
-        date_trigger = DateTrigger  # type: ignore
+        assert callable(DateTrigger), "DateTrigger must be callable"
         _scheduler.add_job(
             _auto_notify_voting_start,
-            trigger=date_trigger(run_date=start_dt),
+            trigger=DateTrigger(run_date=start_dt),
             id=job_id,
             args=[election_id],
             replace_existing=True
