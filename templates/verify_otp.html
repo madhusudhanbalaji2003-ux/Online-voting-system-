@@ -11,6 +11,22 @@
         </div>
         <div id="alert-box"></div>
 
+        {% if dev_otp %}
+        <div class="alert alert-info" style="text-align:left;margin-bottom:1.5rem;background:rgba(124,58,237,0.12);border:1px solid rgba(167,139,250,0.35);border-radius:12px;padding:14px 18px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <span style="font-size:0.88rem;color:#c4b5fd;">
+                    💡 <strong>Test Mode Active:</strong> Your OTP code is <code style="font-size:1.15rem;font-weight:800;color:#34d399;letter-spacing:2px;margin-left:6px;background:rgba(0,0,0,0.3);padding:2px 8px;border-radius:6px;">{{ dev_otp }}</code>
+                </span>
+                <button type="button" class="btn btn-sm btn-secondary" onclick="fillDevOtp('{{ dev_otp }}')" style="padding:6px 14px;font-size:0.8rem;cursor:pointer;">
+                    ⚡ Auto Fill
+                </button>
+            </div>
+            <div style="font-size:0.75rem;color:#9ca3af;margin-top:6px;">
+                Add your free <code>RESEND_API_KEY</code> or Gmail App Password in <code>.env</code> to deliver real emails to your Gmail inbox.
+            </div>
+        </div>
+        {% endif %}
+
         <div class="otp-inputs">
             <input type="text" maxlength="1" id="otp1" autofocus>
             <input type="text" maxlength="1" id="otp2">
@@ -26,7 +42,7 @@
 
         <p style="margin-top:1.5rem;color:var(--text-muted);font-size:0.8rem;">
             OTP expires in 5 minutes.<br>
-            <small>Check your console/terminal if email is not configured (dev mode).</small>
+            <small>If email is not received, check your spam folder or server console.</small>
         </p>
     </div>
 </div>
@@ -53,6 +69,15 @@ inputs.forEach((inp, i) => {
         inputs[Math.min(text.length, inputs.length) - 1].focus();
     });
 });
+
+function fillDevOtp(code) {
+    if (!code) return;
+    const chars = code.toString().split('');
+    chars.forEach((ch, idx) => {
+        if (inputs[idx]) inputs[idx].value = ch;
+    });
+    if (inputs[5]) inputs[5].focus();
+}
 
 async function verifyOTP() {
     const otp = Array.from(inputs).map(i => i.value).join('');

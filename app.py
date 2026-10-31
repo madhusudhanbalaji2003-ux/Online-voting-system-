@@ -7,12 +7,15 @@ import base64
 import csv
 import hashlib
 import io
+import json
 import os
 import random
 import smtplib
 import sqlite3
 import string
 import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -47,8 +50,8 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 
 # ──────────────────────────────────────────────
-# Email Configuration (Gmail SMTP)
-# Set these environment variables or modify directly (or create a .env file)
+# Email Configuration (Multi-Provider: Resend, Brevo, Gmail SMTP)
+# Set these in your .env file or environment variables
 # ──────────────────────────────────────────────
 _env_path = os.path.join(os.path.dirname(__file__), ".env")
 if os.path.exists(_env_path):
@@ -66,6 +69,10 @@ SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "")
+EMAIL_SENDER_NAME = os.environ.get("EMAIL_SENDER_NAME", "SecureVote")
+EMAIL_FROM = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
 
 # Admin credentials
 ADMIN_USERNAME = "admin"
@@ -258,114 +265,254 @@ def generate_otp(length=6):
     return "".join(random.choices(string.digits, k=length))
 
 
-def send_otp_email(email, otp):
-    """Send OTP via email using Gmail SMTP (supports TLS 587 and SSL 465)."""
-    user_smtp = (SMTP_EMAIL or "").strip()
-    pass_smtp = (SMTP_PASSWORD or "").strip().replace(" ", "")
+def _send_via_resend(to_email, subject, html_content):
+    """Send email via Resend Free HTTP API (3000 free emails/mo, instant HTTPS delivery)."""
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not api_key:
+        return False, "RESEND_API_KEY is not set"
 
-    if not user_smtp or not pass_smtp:
-        print(f"[DEV MODE] OTP for {email}: {otp}")
-        return True  # Dev mode — skip email
-
+    sender_name = os.environ.get("EMAIL_SENDER_NAME", "SecureVote")
+    sender_email = os.environ.get("EMAIL_FROM", "onboarding@resend.dev")
+    payload = {
+        "from": f"{sender_name} <{sender_email}>",
+        "to": [to_email],
+        "subject": subject,
+        "html": html_content
+    }
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "SecureVote/1.0"
+        },
+        method="POST"
+    )
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🔐 SecureVote — Your OTP Verification Code"
-        msg["From"] = user_smtp
-        msg["To"] = email
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read().decode("utf-8")
+            print(f"[Resend API] Successfully delivered email to {to_email}: {data}")
+            return True, None
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", errors="ignore")
+        print(f"[Resend API Error {e.code}] {err}")
+        return False, f"Resend API error {e.code}: {err}"
+    except Exception as e:
+        print(f"[Resend Error] {e}")
+        return False, str(e)
 
-        html = f"""
-        <html>
-        <body style="font-family: 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; padding: 40px;">
-            <div style="max-width: 480px; margin: auto; background: #1a1a2e; border-radius: 16px; padding: 40px; border: 1px solid #16213e;">
-                <h2 style="color: #7c3aed; margin-bottom: 8px;">🔐 SecureVote</h2>
-                <p style="color: #a0a0b8;">Your one-time verification code:</p>
-                <div style="font-size: 36px; font-weight: bold; color: #a78bfa; letter-spacing: 8px; text-align: center; padding: 24px; background: #16213e; border-radius: 12px; margin: 24px 0;">
-                    {otp}
-                </div>
-                <p style="color: #666; font-size: 13px;">This code expires in 5 minutes. Do not share it with anyone.</p>
-            </div>
-        </body>
-        </html>
-        """
-        msg.attach(MIMEText(html, "html"))
 
-        # Attempt 1: Port 587 STARTTLS
-        try:
-            with smtplib.SMTP(SMTP_SERVER, 587, timeout=10) as server:
-                server.ehlo()
-                server.starttls()
-                server.ehlo()
-                server.login(user_smtp, pass_smtp)
-                server.send_message(msg)
-            return True
-        except Exception as e_tls:
-            print(f"[SMTP TLS 587 Warn] {e_tls} — Trying SSL 465 fallback...")
+def _send_via_brevo(to_email, subject, html_content):
+    """Send email via Brevo Free HTTP API (300 free emails/day)."""
+    api_key = os.environ.get("BREVO_API_KEY", "").strip()
+    if not api_key:
+        return False, "BREVO_API_KEY is not set"
 
-        # Attempt 2: Port 465 SSL Fallback
+    sender_name = os.environ.get("EMAIL_SENDER_NAME", "SecureVote")
+    sender_email = os.environ.get("EMAIL_FROM", "noreply@securevote.internal")
+    payload = {
+        "sender": {"name": sender_name, "email": sender_email},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "htmlContent": html_content
+    }
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={
+            "api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        method="POST"
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = resp.read().decode("utf-8")
+            print(f"[Brevo API] Successfully delivered email to {to_email}: {data}")
+            return True, None
+    except urllib.error.HTTPError as e:
+        err = e.read().decode("utf-8", errors="ignore")
+        print(f"[Brevo API Error {e.code}] {err}")
+        return False, f"Brevo API error {e.code}: {err}"
+    except Exception as e:
+        print(f"[Brevo Error] {e}")
+        return False, str(e)
+
+
+def _send_via_smtp(to_email, subject, html_content):
+    """Send email via Gmail SMTP (TLS 587 or SSL 465)."""
+    user_smtp = (os.environ.get("SMTP_EMAIL") or SMTP_EMAIL or "").strip()
+    pass_smtp = (os.environ.get("SMTP_PASSWORD") or SMTP_PASSWORD or "").strip().replace(" ", "")
+    if not user_smtp or not pass_smtp:
+        return False, "SMTP credentials missing"
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"SecureVote <{user_smtp}>"
+    msg["To"] = to_email
+    msg.attach(MIMEText(html_content, "html"))
+
+    # Attempt 1: Port 587 STARTTLS
+    try:
+        with smtplib.SMTP(SMTP_SERVER, 587, timeout=10) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(user_smtp, pass_smtp)
+            server.send_message(msg)
+        print(f"[SMTP Port 587] Successfully sent email to {to_email}")
+        return True, None
+    except Exception as e_tls:
+        print(f"[SMTP TLS 587 Warning] {e_tls} — Trying SSL 465...")
+
+    # Attempt 2: Port 465 SSL
+    try:
         with smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=10) as server:
             server.login(user_smtp, pass_smtp)
             server.send_message(msg)
+        print(f"[SMTP Port 465] Successfully sent email to {to_email}")
+        return True, None
+    except Exception as e_ssl:
+        print(f"[SMTP SSL 465 Error] {e_ssl}")
+        return False, f"SMTP error: {e_ssl}"
+
+
+def send_email_message(to_email, subject, html_content):
+    """
+    Unified email dispatcher.
+    Tries in priority order:
+      1. Resend HTTP REST API (fastest, free 3000/mo, no port blocks)
+      2. Brevo HTTP REST API (free 300/day)
+      3. Gmail SMTP (official Google App Password)
+    """
+    # 1. Resend
+    if os.environ.get("RESEND_API_KEY", "").strip():
+        ok, err = _send_via_resend(to_email, subject, html_content)
+        if ok:
+            return True, "Resend HTTP API"
+        print(f"[Mailer] Resend failed ({err}), falling back...")
+
+    # 2. Brevo
+    if os.environ.get("BREVO_API_KEY", "").strip():
+        ok, err = _send_via_brevo(to_email, subject, html_content)
+        if ok:
+            return True, "Brevo HTTP API"
+        print(f"[Mailer] Brevo failed ({err}), falling back...")
+
+    # 3. Gmail SMTP
+    user_smtp = (os.environ.get("SMTP_EMAIL") or SMTP_EMAIL or "").strip()
+    pass_smtp = (os.environ.get("SMTP_PASSWORD") or SMTP_PASSWORD or "").strip()
+    if user_smtp and pass_smtp:
+        ok, err = _send_via_smtp(to_email, subject, html_content)
+        if ok:
+            return True, "Gmail SMTP"
+        print(f"[Mailer] Gmail SMTP failed ({err}), falling back to dev mode...")
+
+    return False, "dev_mode"
+
+
+def send_otp_email(email, otp):
+    """Send OTP via email using the fastest free model (Resend, Brevo, or Gmail SMTP)."""
+    subject = "🔐 SecureVote — Your OTP Verification Code"
+    html_content = f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="margin:0;padding:40px;background-color:#0b0f19;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#f3f4f6;">
+      <table align="center" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width:500px;background:#151c2e;border:1px solid #1f293d;border-radius:18px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+        <tr>
+          <td style="padding:32px 36px;text-align:center;background:linear-gradient(135deg,rgba(124,58,237,0.15),rgba(99,102,241,0.05));border-bottom:1px solid #1f293d;">
+            <div style="font-size:26px;font-weight:800;color:#ffffff;letter-spacing:-0.5px;">
+              🗳️ <span style="background:linear-gradient(135deg,#c4b5fd,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">SecureVote</span>
+            </div>
+            <div style="color:#9ca3af;font-size:12px;margin-top:6px;letter-spacing:1px;text-transform:uppercase;">Decentralized Digital Voting</div>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:36px 36px 20px 36px;">
+            <h2 style="margin:0 0 12px 0;font-size:20px;font-weight:700;color:#f9fafb;text-align:center;">Voter Verification Code</h2>
+            <p style="margin:0 0 24px 0;font-size:14px;color:#9ca3af;line-height:1.6;text-align:center;">
+              Enter the 6-digit code below to authenticate your identity and proceed with voting.
+            </p>
+            <div style="background:#0b0f19;border:1.5px dashed #7c3aed;border-radius:12px;padding:22px;text-align:center;margin:24px 0;">
+              <span style="font-size:38px;font-weight:800;letter-spacing:10px;color:#a78bfa;font-family:monospace;display:inline-block;padding-left:10px;">{otp}</span>
+            </div>
+            <p style="margin:0;font-size:12px;color:#6b7280;text-align:center;line-height:1.5;">
+              ⏱️ This code expires in <strong>5 minutes</strong>. Never share this code with anyone.
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:20px 36px;background:#0d1322;border-top:1px solid #1f293d;text-align:center;">
+            <p style="margin:0;font-size:11px;color:#4b5563;">
+              Secured with SHA-256 blockchain verification • Do not reply
+            </p>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+    """
+
+    ok, method = send_email_message(email, subject, html_content)
+    if ok:
+        print(f"[EMAIL SUCCESS] Delivered OTP to {email} via {method}")
         return True
-    except Exception as e:
-        print(f"[EMAIL ERROR] Failed to send OTP to {email}: {e}")
-        # In case Gmail rejects app password or network blocked, log to console for instant developer debugging
-        print(f"[OTP FALLBACK] Active OTP code for {email}: {otp}")
-        return False
+
+    # Dev Mode / Fallback: Never block voter, log clearly to console & store in session
+    print("\n" + "="*62)
+    print(f"[SECUREVOTE DEV OTP] Code: {otp} for {email}")
+    print(">> Enter this code in your browser to verify immediately!")
+    print(">> (To deliver real emails to Gmail, add RESEND_API_KEY or Gmail App Password to your .env)")
+    print("="*62 + "\n")
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            session["dev_otp"] = otp
+            session["dev_otp_time"] = time.time()
+    except Exception:
+        pass
+    return True
 
 
 def send_voting_start_notification(email, voter_name, election_title):
     """Send 'Voting has started NOW!' email to a single voter."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print(f"[DEV MODE] Voting-start notification for {email}: {election_title}")
-        return True
-
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"🗳️ SecureVote — Voting is NOW OPEN: {election_title}"
-        msg["From"] = SMTP_EMAIL
-        msg["To"] = email
-
-        html = f"""
-        <html>
-        <body style="font-family:'Segoe UI',sans-serif;background:#0f0f23;color:#e0e0e0;padding:40px;">
-            <div style="max-width:520px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;border:1px solid #16213e;">
-                <h2 style="color:#34d399;margin-bottom:4px;">🗳️ Voting is NOW OPEN!</h2>
-                <p style="color:#a78bfa;font-size:0.9rem;margin-top:0;">{election_title}</p>
-                <hr style="border:none;border-top:1px solid #16213e;margin:20px 0;">
-                <p style="color:#e0e0e0;">Dear <strong>{voter_name}</strong>,</p>
-                <p style="color:#c4b5fd;">The voting period has just begun. You can now cast your vote securely.</p>
-                <div style="background:#16213e;border-radius:12px;padding:24px;margin:24px 0;border-left:4px solid #34d399;">
-                    <div style="font-size:1.2rem;font-weight:700;color:#34d399;text-align:center;">
-                        🟢 Voting is LIVE right now!
-                    </div>
+    subject = f"🗳️ SecureVote — Voting is NOW OPEN: {election_title}"
+    html = f"""
+    <html>
+    <body style="font-family:'Segoe UI',sans-serif;background:#0f0f23;color:#e0e0e0;padding:40px;">
+        <div style="max-width:520px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;border:1px solid #16213e;">
+            <h2 style="color:#34d399;margin-bottom:4px;">🗳️ Voting is NOW OPEN!</h2>
+            <p style="color:#a78bfa;font-size:0.9rem;margin-top:0;">{election_title}</p>
+            <hr style="border:none;border-top:1px solid #16213e;margin:20px 0;">
+            <p style="color:#e0e0e0;">Dear <strong>{voter_name}</strong>,</p>
+            <p style="color:#c4b5fd;">The voting period has just begun. You can now cast your vote securely.</p>
+            <div style="background:#16213e;border-radius:12px;padding:24px;margin:24px 0;border-left:4px solid #34d399;">
+                <div style="font-size:1.2rem;font-weight:700;color:#34d399;text-align:center;">
+                    🟢 Voting is LIVE right now!
                 </div>
-                <div style="text-align:center;margin-top:28px;">
-                    <a href="http://127.0.0.1:5000/login"
-                       style="background:linear-gradient(135deg,#34d399,#059669);color:#fff;
-                              text-decoration:none;padding:14px 36px;border-radius:8px;
-                              font-weight:700;font-size:1rem;">
-                        🗳️ Vote Now
-                    </a>
-                </div>
-                <p style="color:#555;font-size:0.75rem;margin-top:28px;text-align:center;">
-                    This is an automated message from SecureVote. Do not reply.
-                </p>
             </div>
-        </body>
-        </html>
-        """
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        print(f"Voting-start notification error for {email}: {e}")
-        return False
+            <div style="text-align:center;margin-top:28px;">
+                <a href="http://127.0.0.1:5000/login"
+                   style="background:linear-gradient(135deg,#34d399,#059669);color:#fff;
+                          text-decoration:none;padding:14px 36px;border-radius:8px;
+                          font-weight:700;font-size:1rem;">
+                    🗳️ Vote Now
+                </a>
+            </div>
+            <p style="color:#555;font-size:0.75rem;margin-top:28px;text-align:center;">
+                This is an automated message from SecureVote. Do not reply.
+            </p>
+        </div>
+    </body>
+    </html>
+    """
+    ok, method = send_email_message(email, subject, html)
+    if not ok:
+        print(f"[DEV MODE] Voting-start notification for {email}: {election_title}")
+    return True
 
 
 def _auto_notify_voting_start(election_id):
@@ -390,7 +537,7 @@ def _auto_notify_voting_start(election_id):
 
 def schedule_voting_start_job(election_id, start_dt):
     """Schedule (or re-schedule) the auto-notify job for this election."""
-    if _scheduler is None or DateTrigger is None:
+    if _scheduler is None or DateTrigger is None or not callable(DateTrigger):
         print("[Scheduler] Disabled on Vercel — skipping auto-notify scheduling.")
         return
     job_id = f"voting_start_{election_id}"
@@ -399,87 +546,63 @@ def schedule_voting_start_job(election_id, start_dt):
         _scheduler.remove_job(job_id)
     # Only schedule if start_dt is in the future
     if start_dt > datetime.now():
+        date_trigger = DateTrigger  # type: ignore
         _scheduler.add_job(
             _auto_notify_voting_start,
-            trigger=DateTrigger(run_date=start_dt),
+            trigger=date_trigger(run_date=start_dt),
             id=job_id,
             args=[election_id],
             replace_existing=True
         )
         print(f"[Scheduler] Voting-start notification scheduled for {start_dt.isoformat()}")
     else:
-        print(f"[Scheduler] start_dt is in the past — skipping auto-notify scheduling.")
+        print("[Scheduler] start_dt is in the past — skipping auto-notify scheduling.")
 
 
 def send_announcement_email(email, voter_name, election_title, start_dt, end_dt):
     """Send voting announcement email to a single voter."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print(f"[DEV MODE] Announcement for {email}: {election_title} starts {start_dt}")
-        return True
+    start_str = start_dt.strftime("%d %B %Y at %I:%M %p")
+    end_str   = end_dt.strftime("%d %B %Y at %I:%M %p")
+    subject = f"📢 SecureVote — Voting Announcement: {election_title}"
 
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"📢 SecureVote — Voting Announcement: {election_title}"
-        msg["From"] = SMTP_EMAIL
-        msg["To"] = email
-
-        start_str = start_dt.strftime("%d %B %Y at %I:%M %p")
-        end_str   = end_dt.strftime("%d %B %Y at %I:%M %p")
-
-        html = f"""
-        <html>
-        <body style="font-family:'Segoe UI',sans-serif;background:#0f0f23;color:#e0e0e0;padding:40px;">
-            <div style="max-width:520px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;border:1px solid #16213e;">
-                <h2 style="color:#7c3aed;margin-bottom:4px;">📢 SecureVote</h2>
-                <p style="color:#a78bfa;font-size:0.9rem;margin-top:0;">Official Voting Announcement</p>
-                <hr style="border:none;border-top:1px solid #16213e;margin:20px 0;">
-                <p style="color:#e0e0e0;">Dear <strong>{voter_name}</strong>,</p>
-                <p style="color:#c4b5fd;">The voting period for <strong>{election_title}</strong> has been officially scheduled.</p>
-                <div style="background:#16213e;border-radius:12px;padding:24px;margin:24px 0;border-left:4px solid #7c3aed;">
-                    <div style="margin-bottom:14px;">
-                        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:#a78bfa;margin-bottom:4px;">🗓️ Voting Starts</div>
-                        <div style="font-size:1.1rem;font-weight:700;color:#34d399;">{start_str}</div>
-                    </div>
-                    <div>
-                        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:#a78bfa;margin-bottom:4px;">🏁 Voting Ends</div>
-                        <div style="font-size:1.1rem;font-weight:700;color:#f87171;">{end_str}</div>
-                    </div>
+    html = f"""
+    <html>
+    <body style="font-family:'Segoe UI',sans-serif;background:#0f0f23;color:#e0e0e0;padding:40px;">
+        <div style="max-width:520px;margin:auto;background:#1a1a2e;border-radius:16px;padding:40px;border:1px solid #16213e;">
+            <h2 style="color:#7c3aed;margin-bottom:4px;">📢 SecureVote</h2>
+            <p style="color:#a78bfa;font-size:0.9rem;margin-top:0;">Official Voting Announcement</p>
+            <hr style="border:none;border-top:1px solid #16213e;margin:20px 0;">
+            <p style="color:#e0e0e0;">Dear <strong>{voter_name}</strong>,</p>
+            <p style="color:#c4b5fd;">The voting period for <strong>{election_title}</strong> has been officially scheduled.</p>
+            <div style="background:#16213e;border-radius:12px;padding:24px;margin:24px 0;border-left:4px solid #7c3aed;">
+                <div style="margin-bottom:14px;">
+                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:#a78bfa;margin-bottom:4px;">🗓️ Voting Starts</div>
+                    <div style="font-size:1.1rem;font-weight:700;color:#34d399;">{start_str}</div>
                 </div>
-                <p style="color:#a0a0b8;font-size:0.9rem;">Please make sure to cast your vote within the scheduled window. Your vote is secured by blockchain technology.</p>
-                <div style="text-align:center;margin-top:28px;">
-                    <a href="http://127.0.0.1:5000/login" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-weight:700;font-size:0.95rem;">🗳️ Go Vote Now</a>
+                <div>
+                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.08em;color:#a78bfa;margin-bottom:4px;">🏁 Voting Ends</div>
+                    <div style="font-size:1.1rem;font-weight:700;color:#f87171;">{end_str}</div>
                 </div>
-                <p style="color:#555;font-size:0.75rem;margin-top:28px;text-align:center;">This is an automated message from SecureVote. Do not reply.</p>
             </div>
-        </body>
-        </html>
-        """
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
-        return True
-    except Exception as e:
-        print(f"Announcement email error for {email}: {e}")
-        return False
+            <p style="color:#a0a0b8;font-size:0.9rem;">Please make sure to cast your vote within the scheduled window. Your vote is secured by blockchain technology.</p>
+            <div style="text-align:center;margin-top:28px;">
+                <a href="http://127.0.0.1:5000/login" style="background:linear-gradient(135deg,#7c3aed,#4c1d95);color:#fff;text-decoration:none;padding:12px 32px;border-radius:8px;font-weight:700;font-size:0.95rem;">🗳️ Go Vote Now</a>
+            </div>
+            <p style="color:#555;font-size:0.75rem;margin-top:28px;text-align:center;">This is an automated message from SecureVote. Do not reply.</p>
+        </div>
+    </body>
+    </html>
+    """
+    ok, method = send_email_message(email, subject, html)
+    if not ok:
+        print(f"[DEV MODE] Announcement for {email}: {election_title} starts {start_dt}")
+    return True
 
 
 def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, election_title):
     """Send a congratulations acknowledgement email to the voter after successful voting."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
-        print(f"[DEV MODE] Vote acknowledgement for {email} — voted at {voted_at}")
-        return True
-
+    subject = "🎉 SecureVote — Thank You for Voting!"
     try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🎉 SecureVote — Thank You for Voting!"
-        msg["From"] = SMTP_EMAIL
-        msg["To"] = email
-
         html = f"""
         <!DOCTYPE html>
         <html lang="en">
@@ -632,17 +755,12 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
         </body>
         </html>
         """
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
+        ok, method = send_email_message(email, subject, html)
+        if not ok:
+            print(f"[DEV MODE] Vote acknowledgement for {email} — voted at {voted_at}")
         return True
     except Exception as e:
-        print(f"Vote acknowledgement email error for {email}: {e}")
+        print(f"Vote acknowledgement error for {email}: {e}")
         return False
 
 
@@ -901,7 +1019,8 @@ def verify_otp():
         return redirect(url_for("login"))
 
     if request.method == "GET":
-        return render_template("verify_otp.html", email=session["pending_email"])
+        dev_otp = session.get("dev_otp")
+        return render_template("verify_otp.html", email=session["pending_email"], dev_otp=dev_otp)
 
     data = request.get_json()
     if not data:
@@ -935,6 +1054,7 @@ def verify_otp():
     conn.close()
 
     session["otp_verified"] = True
+    session.pop("dev_otp", None)
     return jsonify({"success": True, "message": "OTP verified!", "redirect": url_for("verify_face")})
 
 

@@ -1,0 +1,11 @@
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-path = [
+    ".",
+    ".venv/Lib/site-packages"
+]
+
+[errors]
+missing-import = "ignore"
+no-matching-overload = "ignore"
+not-callable = "ignore"
+

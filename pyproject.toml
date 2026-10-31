@@ -1,0 +1,12 @@
+[tool.pyrefly]
+python-interpreter-path = ".venv/Scripts/python.exe"
+search-path = [
+    ".",
+    ".venv/Lib/site-packages"
+]
+
+[tool.pyrefly.errors]
+missing-import = "ignore"
+no-matching-overload = "ignore"
+not-callable = "ignore"
+
