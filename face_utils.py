@@ -31,22 +31,39 @@ def _resolve_model_path(filename):
     return candidates[0]
 
 
-# OpenCV Face Recognition Models — bundled with the project (no download needed)
-YUNET_PATH = _resolve_model_path("face_detection_yunet.onnx")
-SFACE_PATH = _resolve_model_path("face_recognition_sface.onnx")
+# OpenCV Face Recognition Models — lazily loaded on first use (instant server boot)
+detector = None
+recognizer = None
 
-try:
-    if os.path.exists(YUNET_PATH) and os.path.exists(SFACE_PATH):
-        detector = cv2.FaceDetectorYN.create(YUNET_PATH, "", (320, 320))
-        recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
-    else:
-        print("Warning: Face model files not found. Face recognition will be disabled.")
-        detector = None
-        recognizer = None
-except Exception as e:
-    print(f"Error loading OpenCV Face models: {e}")
-    detector = None
-    recognizer = None
+
+def _get_detector():
+    global detector
+    if detector is None:
+        p = _resolve_model_path("face_detection_yunet.onnx")
+        if os.path.exists(p):
+            try:
+                detector = cv2.FaceDetectorYN.create(p, "", (320, 320))
+                print(f"[FaceAI] Loaded FaceDetectorYN from {p}")
+            except Exception as e:
+                print(f"[FaceAI Error] Failed to load YuNet: {e}")
+        else:
+            print(f"[FaceAI Warning] {p} not found.")
+    return detector
+
+
+def _get_recognizer():
+    global recognizer
+    if recognizer is None:
+        p = _resolve_model_path("face_recognition_sface.onnx")
+        if os.path.exists(p):
+            try:
+                recognizer = cv2.FaceRecognizerSF.create(p, "")
+                print(f"[FaceAI] Loaded FaceRecognizerSF from {p}")
+            except Exception as e:
+                print(f"[FaceAI Error] Failed to load SFace: {e}")
+        else:
+            print(f"[FaceAI Warning] {p} not found.")
+    return recognizer
 
 
 
@@ -70,7 +87,9 @@ def get_face_encoding(image_array):
     Extract face encoding from an image array.
     Returns the encoding or None if no face is found.
     """
-    if detector is None or recognizer is None:
+    d = _get_detector()
+    r = _get_recognizer()
+    if d is None or r is None:
         print("Face models are not loaded.")
         return None
 
@@ -82,9 +101,9 @@ def get_face_encoding(image_array):
             bgr_image = image_array
 
         h, w = bgr_image.shape[:2]
-        detector.setInputSize((w, h))
+        d.setInputSize((w, h))
         
-        status, faces = detector.detect(bgr_image)
+        status, faces = d.detect(bgr_image)
         if faces is None or len(faces) == 0:
             return None
             
@@ -92,8 +111,8 @@ def get_face_encoding(image_array):
         face = faces[0]
         
         # Align face and extract features
-        aligned_face = recognizer.alignCrop(bgr_image, face)
-        feature = recognizer.feature(aligned_face)
+        aligned_face = r.alignCrop(bgr_image, face)
+        feature = r.feature(aligned_face)
         return feature
     except Exception as e:
         print(f"Error getting face encoding: {e}")
@@ -105,6 +124,10 @@ def compare_faces(known_encoding, test_image_array):
     Compare a known face encoding with a test image.
     Returns (match: bool, distance: float).
     """
+    r = _get_recognizer()
+    if r is None:
+        return False, 1.0
+
     try:
         test_encoding = get_face_encoding(test_image_array)
         if test_encoding is None:
@@ -112,7 +135,7 @@ def compare_faces(known_encoding, test_image_array):
 
         # Calculate Cosine Similarity (higher is better, threshold >= 0.363)
         # Using 0 (cv2.FaceRecognizerSF_FR_COSINE) to compute cosine similarity
-        similarity = recognizer.match(known_encoding, test_encoding, 0)
+        similarity = r.match(known_encoding, test_encoding, 0)
         match = similarity >= 0.363
         
         # Convert similarity (-1 to 1) to distance (0 to 1) for the app.py logic
@@ -140,7 +163,8 @@ def find_duplicate_face(new_encoding, registered_voters):
         (is_duplicate: bool, matched_name: str | None)
         is_duplicate is True if the face is already registered under a different account.
     """
-    if recognizer is None or new_encoding is None:
+    r = _get_recognizer()
+    if r is None or new_encoding is None:
         return False, None
 
     # SFace cosine similarity threshold — same as login verification
@@ -151,7 +175,7 @@ def find_duplicate_face(new_encoding, registered_voters):
             continue
         try:
             stored_encoding = deserialize_encoding(encoding_bytes)
-            similarity = recognizer.match(new_encoding, stored_encoding, 0)  # 0 = COSINE
+            similarity = r.match(new_encoding, stored_encoding, 0)  # 0 = COSINE
             if similarity >= DUPLICATE_THRESHOLD:
                 print(f"[DUPLICATE FACE] Incoming face matches registered voter: {voter_name} (similarity={similarity:.4f})")
                 return True, voter_name
@@ -189,7 +213,8 @@ def detect_face_in_frame(image_array):
     Detect face and return its center using OpenCV YuNet.
     Returns (face_detected: bool, center: tuple).
     """
-    if detector is None:
+    d = _get_detector()
+    if d is None:
         return False, None
     try:
         if len(image_array.shape) == 3 and image_array.shape[2] == 3:
@@ -198,8 +223,8 @@ def detect_face_in_frame(image_array):
             bgr_image = image_array
 
         h, w = bgr_image.shape[:2]
-        detector.setInputSize((w, h))
-        status, faces = detector.detect(bgr_image)
+        d.setInputSize((w, h))
+        status, faces = d.detect(bgr_image)
         
         if faces is None or len(faces) == 0:
             return False, None

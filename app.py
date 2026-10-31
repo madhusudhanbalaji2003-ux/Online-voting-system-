@@ -34,7 +34,15 @@ from face_utils import (analyze_liveness_frames, compare_faces,
 # ──────────────────────────────────────────────
 # Flask App Configuration
 # ──────────────────────────────────────────────
-app = Flask(__name__)
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_template_dir = os.path.join(_BASE_DIR, "templates")
+_static_dir = os.path.join(_BASE_DIR, "static")
+
+app = Flask(
+    __name__,
+    template_folder=_template_dir,
+    static_folder=_static_dir
+)
 # Use a fixed secret key (from env var) so sessions survive cold starts on Vercel
 app.secret_key = os.environ.get("SECRET_KEY", "securevote-default-secret-key-change-in-prod")
 
