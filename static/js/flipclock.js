@@ -45,8 +45,9 @@
     m.text.textContent = d;
     
     m.inner.classList.remove('sf-flip-anim');
-    void m.inner.offsetWidth; // Force CSS reflow to re-trigger animation
-    m.inner.classList.add('sf-flip-anim');
+    requestAnimationFrame(function() {
+      m.inner.classList.add('sf-flip-anim');
+    });
   };
 
   // Helper to set 2-digit pairs

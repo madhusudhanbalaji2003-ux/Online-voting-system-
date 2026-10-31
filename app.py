@@ -19,7 +19,7 @@ from email.mime.text import MIMEText
 from functools import wraps
 
 import numpy as np
-from flask import (Flask, flash, jsonify, redirect, render_template, request,
+from flask import (Flask, Response, flash, jsonify, redirect, render_template, request,
                    session, url_for)
 
 from blockchain import Blockchain
@@ -36,7 +36,8 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "securevote-default-secret-key-change-in-prod")
 
 # Use /tmp on Vercel (read-only filesystem outside /tmp); fall back to static/ locally
-_TMP_BASE = "/tmp" if os.environ.get("VERCEL") else os.path.join(app.static_folder, "uploads")
+_static_dir = str(app.static_folder or "static")
+_TMP_BASE = "/tmp" if os.environ.get("VERCEL") else os.path.join(_static_dir, "uploads")
 app.config["UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "faces")
 app.config["CANDIDATE_UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "candidates")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
@@ -47,8 +48,20 @@ os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 
 # ──────────────────────────────────────────────
 # Email Configuration (Gmail SMTP)
-# Set these environment variables or modify directly
+# Set these environment variables or modify directly (or create a .env file)
 # ──────────────────────────────────────────────
+_env_path = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_path):
+    try:
+        with open(_env_path, "r", encoding="utf-8") as _f:
+            for _line in _f:
+                _line = _line.strip()
+                if _line and not _line.startswith("#") and "=" in _line:
+                    _k, _v = _line.split("=", 1)
+                    os.environ.setdefault(_k.strip(), _v.strip().strip('"').strip("'"))
+    except Exception:
+        pass
+
 SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_SERVER = "smtp.gmail.com"
@@ -64,17 +77,15 @@ ADMIN_PASSWORD = "admin123"
 # ──────────────────────────────────────────────
 _IS_VERCEL = bool(os.environ.get("VERCEL"))
 _scheduler = None
-if not _IS_VERCEL:
+try:
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.date import DateTrigger
-    _scheduler = BackgroundScheduler(daemon=True)
-    _scheduler.start()
-else:
-    # Stub imports so the rest of the code doesn't break
-    try:
-        from apscheduler.triggers.date import DateTrigger
-    except ImportError:
-        DateTrigger = None
+    if not _IS_VERCEL:
+        _scheduler = BackgroundScheduler(daemon=True)
+        _scheduler.start()
+except ImportError:
+    BackgroundScheduler = None  # type: ignore
+    DateTrigger = None  # type: ignore
 
 # ──────────────────────────────────────────────
 # Blockchain Instance
@@ -209,6 +220,33 @@ def init_db():
 
 
 # Initialize database on startup
+
+# -----------------------------------------------------------------
+# Jinja2 custom filter: format ISO datetime as "DD-MM-YYYY HH:MM"
+# -----------------------------------------------------------------
+@app.template_filter('ddmmyyyy')
+def ddmmyyyy(value):
+    """Convert ISO8601 string (e.g. "2026-11-28T11:07") to
+    "DD-MM-YYYY HH:MM" format (First date, next month, then year).
+    """
+    if not value:
+        return ""
+    try:
+        val = str(value).strip().replace(' ', 'T')
+        if len(val) == 16:
+            val += ':00'
+        dt = datetime.fromisoformat(val)
+        return dt.strftime('%d-%m-%Y %H:%M')
+    except Exception:
+        try:
+            parts = str(value).strip().split('T') if 'T' in str(value) else str(value).strip().split(' ')
+            d_parts = parts[0].split('-')
+            if len(d_parts) == 3 and len(d_parts[0]) == 4:
+                time_part = parts[1][:5] if len(parts) > 1 else ''
+                return f"{d_parts[2]}-{d_parts[1]}-{d_parts[0]} {time_part}".strip()
+        except Exception:
+            pass
+        return str(value)
 init_db()
 
 
@@ -221,15 +259,18 @@ def generate_otp(length=6):
 
 
 def send_otp_email(email, otp):
-    """Send OTP via email using Gmail SMTP."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    """Send OTP via email using Gmail SMTP (supports TLS 587 and SSL 465)."""
+    user_smtp = (SMTP_EMAIL or "").strip()
+    pass_smtp = (SMTP_PASSWORD or "").strip().replace(" ", "")
+
+    if not user_smtp or not pass_smtp:
         print(f"[DEV MODE] OTP for {email}: {otp}")
         return True  # Dev mode — skip email
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "🔐 SecureVote — Your OTP Verification Code"
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = user_smtp
         msg["To"] = email
 
         html = f"""
@@ -248,14 +289,27 @@ def send_otp_email(email, otp):
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
+        # Attempt 1: Port 587 STARTTLS
+        try:
+            with smtplib.SMTP(SMTP_SERVER, 587, timeout=10) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(user_smtp, pass_smtp)
+                server.send_message(msg)
+            return True
+        except Exception as e_tls:
+            print(f"[SMTP TLS 587 Warn] {e_tls} — Trying SSL 465 fallback...")
 
+        # Attempt 2: Port 465 SSL Fallback
+        with smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=10) as server:
+            server.login(user_smtp, pass_smtp)
+            server.send_message(msg)
         return True
     except Exception as e:
-        print(f"Email send error: {e}")
+        print(f"[EMAIL ERROR] Failed to send OTP to {email}: {e}")
+        # In case Gmail rejects app password or network blocked, log to console for instant developer debugging
+        print(f"[OTP FALLBACK] Active OTP code for {email}: {otp}")
         return False
 
 
@@ -302,8 +356,10 @@ def send_voting_start_notification(email, voter_name, election_title):
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.send_message(msg)
         return True
@@ -334,7 +390,7 @@ def _auto_notify_voting_start(election_id):
 
 def schedule_voting_start_job(election_id, start_dt):
     """Schedule (or re-schedule) the auto-notify job for this election."""
-    if _scheduler is None:
+    if _scheduler is None or DateTrigger is None:
         print("[Scheduler] Disabled on Vercel — skipping auto-notify scheduling.")
         return
     job_id = f"voting_start_{election_id}"
@@ -400,8 +456,10 @@ def send_announcement_email(email, voter_name, election_title, start_dt, end_dt)
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.send_message(msg)
         return True
@@ -576,8 +634,10 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
             server.starttls()
+            server.ehlo()
             server.login(SMTP_EMAIL, SMTP_PASSWORD)
             server.send_message(msg)
         return True
@@ -1512,7 +1572,6 @@ def admin_export_whitelist_csv():
     for r in rows:
         writer.writerow([r["voter_name"], r["voter_id"], r["imported_at"]])
 
-    from flask import Response
     return Response(
         output.getvalue(),
         mimetype="text/csv",

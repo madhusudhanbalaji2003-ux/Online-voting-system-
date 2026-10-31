@@ -95,7 +95,7 @@
 
   function initAllDiscordButtons() {
     const selector = [
-      'button:not(.taskbar-hamburger):not(.mdtp-mode-tab):not(.mdtp-nav-btn):not(.mdtp-ampm):not(.mdtp-cell):not(.scroll-advance-btn)',
+      'button:not(.taskbar-hamburger):not(.mdtp-mode-tab):not(.mdtp-nav-btn):not(.mdtp-ampm):not(.mdtp-cell):not(.scroll-advance-btn):not(.picker-action-btn):not(#start-pick-btn):not(#end-pick-btn)',
       '.btn',
       '.nav-cta',
       '.voter-submit-btn',
@@ -105,24 +105,12 @@
     document.querySelectorAll(selector).forEach(setupDiscordButton);
   }
 
+  // Expose global initializer for dynamic modals/forms if needed
+  window.initDiscordButtons = initAllDiscordButtons;
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initAllDiscordButtons);
   } else {
     initAllDiscordButtons();
-  }
-
-  // Handle dynamically inserted or altered buttons
-  let debounceTimer = null;
-  const observer = new MutationObserver(function () {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(initAllDiscordButtons, 50);
-  });
-
-  if (document.body) {
-    observer.observe(document.body, { childList: true, subtree: true });
-  } else {
-    document.addEventListener('DOMContentLoaded', function () {
-      observer.observe(document.body, { childList: true, subtree: true });
-    });
   }
 })();

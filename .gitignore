@@ -51,6 +51,7 @@ desktop.ini
 .vscode/
 .idea/
 *.code-workspace
+pyrightconfig.json
 
 # Temp / lock files
 ~$*

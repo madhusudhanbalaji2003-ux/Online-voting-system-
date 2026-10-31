@@ -322,6 +322,22 @@
   transition: border-color 0.15s;
 }
 .mdtp-min-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.2); }
+.mdtp-min-btn {
+  background: rgba(124,58,237,0.18);
+  border: 1px solid rgba(124,58,237,0.35);
+  color: #c4b5fd;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.mdtp-min-btn:hover {
+  background: #7c3aed;
+  color: #fff;
+  border-color: #7c3aed;
+}
 
 /* Footer */
 .mdtp-footer {
@@ -518,7 +534,7 @@
 
             {% if election['voting_start'] and election['voting_end'] %}
             <span style="color:var(--text-muted);font-size:0.83rem;">
-                {{ election['voting_start'][:16].replace('T',' ') }} &rarr; {{ election['voting_end'][:16].replace('T',' ') }}
+                {{ election['voting_start']|ddmmyyyy }} &rarr; {{ election['voting_end']|ddmmyyyy }}
             </span>
             {% endif %}
         </div>
@@ -571,13 +587,19 @@
                                 <div class="mdtp-clock-wrap">
                                     <div class="mdtp-clock-face" id="start-clock-face"></div>
                                     <div class="mdtp-time-row">
-                                        <button class="mdtp-ampm" id="start-am-btn" onclick="mdtpSetAM('start',true)">AM</button>
+                                        <button type="button" class="mdtp-ampm" id="start-am-btn" onclick="mdtpSetAM('start',true)">AM</button>
                                         <div class="mdtp-min-wrap">
                                             <div class="mdtp-min-label">Minutes</div>
                                             <input class="mdtp-min-input" id="start-min-input" type="number" min="0" max="59"
-                                                   oninput="mdtpMinChange('start')" onchange="mdtpMinChange('start')">
+                                                   oninput="mdtpMinChange('start')" onblur="mdtpMinBlur('start')">
+                                            <div style="display:flex;gap:4px;margin-top:5px;">
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('start',0)">:00</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('start',15)">:15</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('start',30)">:30</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('start',45)">:45</button>
+                                            </div>
                                         </div>
-                                        <button class="mdtp-ampm" id="start-pm-btn" onclick="mdtpSetAM('start',false)">PM</button>
+                                        <button type="button" class="mdtp-ampm" id="start-pm-btn" onclick="mdtpSetAM('start',false)">PM</button>
                                     </div>
                                 </div>
                             </div>
@@ -626,13 +648,19 @@
                                 <div class="mdtp-clock-wrap">
                                     <div class="mdtp-clock-face" id="end-clock-face"></div>
                                     <div class="mdtp-time-row">
-                                        <button class="mdtp-ampm" id="end-am-btn" onclick="mdtpSetAM('end',true)">AM</button>
+                                        <button type="button" class="mdtp-ampm" id="end-am-btn" onclick="mdtpSetAM('end',true)">AM</button>
                                         <div class="mdtp-min-wrap">
                                             <div class="mdtp-min-label">Minutes</div>
                                             <input class="mdtp-min-input" id="end-min-input" type="number" min="0" max="59"
-                                                   oninput="mdtpMinChange('end')" onchange="mdtpMinChange('end')">
+                                                   oninput="mdtpMinChange('end')" onblur="mdtpMinBlur('end')">
+                                            <div style="display:flex;gap:4px;margin-top:5px;">
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('end',0)">:00</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('end',15)">:15</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('end',30)">:30</button>
+                                                <button type="button" class="mdtp-min-btn" onclick="mdtpSetMin('end',45)">:45</button>
+                                            </div>
                                         </div>
-                                        <button class="mdtp-ampm" id="end-pm-btn" onclick="mdtpSetAM('end',false)">PM</button>
+                                        <button type="button" class="mdtp-ampm" id="end-pm-btn" onclick="mdtpSetAM('end',false)">PM</button>
                                     </div>
                                 </div>
                             </div>
@@ -721,21 +749,43 @@
     /* ── Init one picker ──────────────────────────────────── */
     function initPicker(id, hiddenId, iso) {
       var now  = new Date();
-      var seed = now;
+      var year  = now.getFullYear();
+      var month = now.getMonth() + 1;
+      var day   = now.getDate();
+      var h24   = now.getHours();
+      var min   = now.getMinutes();
+
       if (iso && iso.length >= 16) {
-        var p = new Date(iso); if (!isNaN(p)) seed = p;
+        var cleanIso = iso.trim().replace(' ', 'T');
+        var parts = cleanIso.split('T');
+        var dParts = parts[0].split('-');
+        var tParts = parts[1].split(':');
+        if (dParts.length === 3 && tParts.length >= 2) {
+          var yVal = parseInt(dParts[0], 10);
+          var mVal = parseInt(dParts[1], 10);
+          var dVal = parseInt(dParts[2], 10);
+          var hrVal = parseInt(tParts[0], 10);
+          var mnVal = parseInt(tParts[1], 10);
+          if (!isNaN(yVal) && !isNaN(mVal) && !isNaN(dVal)) {
+            year = yVal;
+            month = mVal;
+            day = dVal;
+            h24 = isNaN(hrVal) ? h24 : hrVal;
+            min = isNaN(mnVal) ? min : mnVal;
+          }
+        }
       }
-      var h24 = seed.getHours();
+
       P[id] = {
         hiddenId : hiddenId,
-        year  : seed.getFullYear(),
-        month : seed.getMonth() + 1,
-        day   : seed.getDate(),
+        year  : year,
+        month : month,
+        day   : day,
         hour  : h24 % 12 || 12,
-        minute: seed.getMinutes(),
+        minute: min,
         ampm  : h24 >= 12 ? 'PM' : 'AM',
-        navY  : seed.getFullYear(),
-        navM  : seed.getMonth() + 1,
+        navY  : year,
+        navM  : month,
         view  : 'date'
       };
       renderTrigger(id);
@@ -816,10 +866,29 @@
     }
     function mdtpMinChange(id) {
       var inp = g(id + '-min-input'); if (!inp) return;
-      var v = Math.max(0, Math.min(59, parseInt(inp.value) || 0));
+      var raw = parseInt(inp.value, 10);
+      if (!isNaN(raw)) {
+        var v = Math.max(0, Math.min(59, raw));
+        P[id].minute = v;
+        renderHeader(id);
+        writeHidden(id);
+      }
+    }
+    function mdtpMinBlur(id) {
+      var inp = g(id + '-min-input'); if (!inp) return;
+      var raw = parseInt(inp.value, 10);
+      var v = isNaN(raw) ? 0 : Math.max(0, Math.min(59, raw));
       inp.value = pad(v);
       P[id].minute = v;
-      renderHeader(id); writeHidden(id);
+      renderHeader(id);
+      writeHidden(id);
+    }
+    function mdtpSetMin(id, m) {
+      P[id].minute = m;
+      var inp = g(id + '-min-input');
+      if (inp) inp.value = pad(m);
+      renderHeader(id);
+      writeHidden(id);
     }
 
     /* ── Renderers ────────────────────────────────────────── */
@@ -847,14 +916,15 @@
       var s = P[id];
       var wd = new Date(s.year, s.month - 1, s.day).getDay();
       setText(id + '-hdr-year', s.year);
-      setText(id + '-hdr-date', WLONG[wd].slice(0,3) + ', ' + MSHORT[s.month-1] + ' ' + s.day);
+      setText(id + '-hdr-date', WLONG[wd].slice(0,3) + ', ' + pad(s.day) + ' ' + MSHORT[s.month-1]);
       setText(id + '-hdr-time', pad(s.hour) + ':' + pad(s.minute) + ' ' + s.ampm);
     }
 
     function renderTrigger(id) {
       var s = P[id];
       var wd = new Date(s.year, s.month - 1, s.day).getDay();
-      setText(id + '-trig-date', WLONG[wd] + ', ' + MONTHS[s.month-1] + ' ' + s.day + ', ' + s.year);
+      // Format: First date, next month, and year (DD-MM-YYYY)
+      setText(id + '-trig-date', pad(s.day) + '-' + pad(s.month) + '-' + s.year + ' (' + WLONG[wd] + ')');
       setText(id + '-trig-time', pad(s.hour) + ':' + pad(s.minute) + ' ' + s.ampm);
     }
 
@@ -938,6 +1008,8 @@
     window.mdtpHour     = mdtpHour;
     window.mdtpSetAM    = mdtpSetAM;
     window.mdtpMinChange = mdtpMinChange;
+    window.mdtpMinBlur  = mdtpMinBlur;
+    window.mdtpSetMin   = mdtpSetMin;
 
     /* ── Bootstrap ────────────────────────────────────────── */
     var isoStart = (g('voting_start') || {}).value || '';

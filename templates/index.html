@@ -91,6 +91,14 @@
                     <div class="sf-cnt">
                         <div class="sf-unit">
                             <div class="sf-group">
+                                <div class="sf-module" data-id="hc-c-d1"></div>
+                                <div class="sf-module" data-id="hc-c-d2"></div>
+                            </div>
+                            <div class="sf-label">DAYS</div>
+                        </div>
+                        <div class="sf-colon">:</div>
+                        <div class="sf-unit">
+                            <div class="sf-group">
                                 <div class="sf-module" data-id="hc-c-h1"></div>
                                 <div class="sf-module" data-id="hc-c-h2"></div>
                             </div>
@@ -115,7 +123,7 @@
                     </div>
 
                     <div class="hc-period-info" style="margin-top:12px;">
-                        Closes: <strong>{{ voting_end[:16].replace('T',' ') }}</strong>
+                        Closes: <strong>{{ voting_end|ddmmyyyy }}</strong>
                     </div>
 
                     {% elif voting_status == 'scheduled' %}
@@ -157,15 +165,15 @@
                     </div>
 
                     <div class="hc-period-info" style="margin-top:12px;">
-                        Opens: <strong>{{ voting_start[:16].replace('T',' ') }}</strong>
+                        Opens: <strong>{{ voting_start|ddmmyyyy }}</strong>
                     </div>
 
                     {% elif voting_status == 'ended' %}
                     <div class="hc-status hc-status--ended">🔒 VOTING CLOSED</div>
                     <div class="hc-cd-label">This election has concluded</div>
                     <div class="hc-period-info" style="margin-top:0.75rem;">
-                        Ran: <strong>{{ voting_start[:16].replace('T',' ') }}</strong>
-                        &rarr; <strong>{{ voting_end[:16].replace('T',' ') }}</strong>
+                        Ran: <strong>{{ voting_start|ddmmyyyy }}</strong>
+                        &rarr; <strong>{{ voting_end|ddmmyyyy }}</strong>
                     </div>
                     <a href="#section-results" class="btn btn-outline" style="margin-top:1rem;font-size:0.82rem;padding:8px 18px;">
                         📊 View Results
@@ -546,6 +554,7 @@
                 </div>
             </section>
 
+
             <!-- Back to top button -->
             <div style="text-align:center;margin-top:3.5rem;">
                 <a href="#section-home" class="scroll-advance-btn">
@@ -606,27 +615,25 @@
           }
       });
 
-      // ── Scroll-Driven Scale Animation for Every Box of Cards ──
+      // ── Smooth Hardware-Accelerated Reveal on Scroll ──
       const scrollCards = document.querySelectorAll(
           '.voter-reg-card, .pro-feature-card, .candidate-card, .stat-block, .scale-card, .interactive-section-card, .telemetry-card, .card'
       );
       scrollCards.forEach(card => {
-          // If already in hero/initial viewport, keep visible
           const rect = card.getBoundingClientRect();
-          if (rect.top < window.innerHeight * 0.75) return;
+          if (rect.top < window.innerHeight * 0.8) return;
 
           gsap.fromTo(card,
-              { scale: 0.88, opacity: 0 },
+              { opacity: 0, y: 22 },
               {
-                  scale: 1,
                   opacity: 1,
+                  y: 0,
+                  duration: 0.55,
                   ease: "power2.out",
                   scrollTrigger: {
                       trigger: card,
-                      start: "top 95%",
-                      end: "top 62%",
-                      scrub: 0.6,
-                      invalidateOnRefresh: true
+                      start: "top 90%",
+                      once: true
                   }
               }
           );
@@ -674,13 +681,21 @@
       var delta = targetMs - now;
       if (delta <= 0) { window.location.reload(); return; }
 
+      var totalSec = Math.floor(delta / 1000);
+      var totalHours = Math.floor(totalSec / 3600);
+      var days = Math.floor(totalSec / 86400);
+      var remHours = Math.floor((totalSec % 86400) / 3600);
+      var mins = Math.floor((totalSec % 3600) / 60);
+      var secs = totalSec % 60;
+
       if (window.sfSetUnit) {
-          var totalSec = Math.floor(delta / 1000);
-          window.sfSetUnit('hc-c-d', Math.floor(totalSec / 86400));
-          window.sfSetUnit('hc-c-h', Math.floor(totalSec / 3600) % 24);
-          window.sfSetUnit('hc-c-m', Math.floor(totalSec / 60) % 60);
-          window.sfSetUnit('hc-c-s', totalSec % 60);
+          window.sfSetUnit('hc-c-d', days);
+          window.sfSetUnit('hc-c-h', remHours);
+          window.sfSetUnit('hc-c-m', mins);
+          window.sfSetUnit('hc-c-s', secs);
       }
+
+
     }
     tickCountdown();
     setInterval(tickCountdown, 1000);

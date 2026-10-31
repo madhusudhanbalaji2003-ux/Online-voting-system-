@@ -20,7 +20,7 @@
   <h1 class="vc-title">Voting Hasn't Started Yet</h1>
   <p class="vc-subtitle">
     The polls open on
-    <strong style="color:#a78bfa;">{{ start[:16].replace('T',' ') }}</strong>.
+    <strong style="color:#a78bfa;">{{ start|ddmmyyyy }}</strong>.
     Come back then to cast your vote!
   </p>
 
@@ -65,19 +65,19 @@
   <h1 class="vc-title" style="color:#f87171;">Voting Period Has Ended</h1>
   <p class="vc-subtitle">
     The voting window closed on
-    <strong style="color:#f87171;">{{ end[:16].replace('T',' ') }}</strong>.
+    <strong style="color:#f87171;">{{ end|ddmmyyyy }}</strong>.
     Results will be published by the administrator.
   </p>
 
   <div class="vc-ended-badge">
     <div class="vc-ended-row">
       <span class="vc-ended-label">Opened</span>
-      <span class="vc-ended-value">{{ start[:16].replace('T',' ') }}</span>
+      <span class="vc-ended-value">{{ start|ddmmyyyy }}</span>
     </div>
     <div class="vc-ended-divider"></div>
     <div class="vc-ended-row">
       <span class="vc-ended-label">Closed</span>
-      <span class="vc-ended-value" style="color:#f87171;">{{ end[:16].replace('T',' ') }}</span>
+      <span class="vc-ended-value" style="color:#f87171;">{{ end|ddmmyyyy }}</span>
     </div>
   </div>
   {% endif %}
