@@ -12,23 +12,40 @@ import time
 
 
 # ── Persistence helpers ────────────────────────────────────────────────────────
-_IS_VERCEL = bool(os.environ.get("VERCEL"))
-if _IS_VERCEL:
+_IS_SERVERLESS = bool(
+    os.environ.get("VERCEL")
+    or os.environ.get("VERCEL_ENV")
+    or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+    or os.environ.get("LAMBDA_TASK_ROOT")
+)
+_IS_VERCEL = _IS_SERVERLESS
+
+if _IS_SERVERLESS:
     _CHAIN_DB = "/tmp/blockchain.db"
     _bundled_chain = os.path.join(os.path.dirname(__file__), "blockchain_chain.db")
     if not os.path.exists(_CHAIN_DB) and os.path.exists(_bundled_chain):
         try:
             import shutil
             shutil.copy2(_bundled_chain, _CHAIN_DB)
-            print("[Vercel] Seeded /tmp/blockchain.db from bundled blockchain_chain.db")
+            print("[Serverless] Seeded /tmp/blockchain.db from bundled blockchain_chain.db")
         except Exception as _e:
-            print(f"[Vercel] Warning copying blockchain db: {_e}")
+            print(f"[Serverless] Warning copying blockchain db: {_e}")
 else:
     _CHAIN_DB = os.path.join(os.path.dirname(__file__), "blockchain_chain.db")
 
 
 def _get_chain_conn():
-    conn = sqlite3.connect(_CHAIN_DB)
+    conn = sqlite3.connect(_CHAIN_DB, timeout=30)
+    if not _IS_SERVERLESS:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+    else:
+        try:
+            conn.execute("PRAGMA journal_mode=DELETE")
+        except Exception:
+            pass
     conn.execute("""
         CREATE TABLE IF NOT EXISTS blocks (
             idx       INTEGER PRIMARY KEY,

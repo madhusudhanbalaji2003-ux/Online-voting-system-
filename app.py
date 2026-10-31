@@ -38,16 +38,28 @@ app = Flask(__name__)
 # Use a fixed secret key (from env var) so sessions survive cold starts on Vercel
 app.secret_key = os.environ.get("SECRET_KEY", "securevote-default-secret-key-change-in-prod")
 
+# Serverless detection (Vercel / AWS Lambda)
+_IS_SERVERLESS = bool(
+    os.environ.get("VERCEL")
+    or os.environ.get("VERCEL_ENV")
+    or os.environ.get("AWS_LAMBDA_FUNCTION_NAME")
+    or os.environ.get("LAMBDA_TASK_ROOT")
+)
+_IS_VERCEL = _IS_SERVERLESS
+
 # Use /tmp on Vercel (read-only filesystem outside /tmp); fall back to static/ locally
 _static_dir = str(app.static_folder or "static")
-_TMP_BASE = "/tmp" if os.environ.get("VERCEL") else os.path.join(_static_dir, "uploads")
+_TMP_BASE = "/tmp" if _IS_SERVERLESS else os.path.join(_static_dir, "uploads")
 app.config["UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "faces")
 app.config["CANDIDATE_UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "candidates")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
 
 # Create upload directories (safe on both Vercel /tmp and local static/)
-os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
-os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
+try:
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
+except Exception as _e:
+    print(f"[Uploads] Notice on creating folders: {_e}")
 
 
 @app.route("/static/uploads/<path:filename>")
@@ -94,15 +106,14 @@ ADMIN_PASSWORD = "admin123"
 # Background Scheduler (voting-start auto-notify)
 # Disabled on Vercel (serverless — no persistent threads)
 # ──────────────────────────────────────────────
-_IS_VERCEL = bool(os.environ.get("VERCEL"))
 _scheduler = None
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     from apscheduler.triggers.date import DateTrigger
-    if not _IS_VERCEL:
+    if not _IS_SERVERLESS:
         _scheduler = BackgroundScheduler(daemon=True)
         _scheduler.start()
-except ImportError:
+except Exception:
     BackgroundScheduler = None  # type: ignore
     DateTrigger = None  # type: ignore
 
@@ -116,25 +127,34 @@ blockchain = Blockchain()
 # Database Setup
 # ──────────────────────────────────────────────
 # Use /tmp on Vercel (writable); fall back to project root locally
-if os.environ.get("VERCEL"):
+if _IS_SERVERLESS:
     DB_PATH = "/tmp/database.db"
     _bundled_db = os.path.join(os.path.dirname(__file__), "database.db")
     if not os.path.exists(DB_PATH) and os.path.exists(_bundled_db):
         try:
             import shutil
             shutil.copy2(_bundled_db, DB_PATH)
-            print("[Vercel] Seeded /tmp/database.db from bundled database.db")
+            print("[Serverless] Seeded /tmp/database.db from bundled database.db")
         except Exception as _e:
-            print(f"[Vercel] Warning copying database: {_e}")
+            print(f"[Serverless] Warning copying database: {_e}")
 else:
     DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
 
 
 def get_db():
     """Get a database connection."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
+    if not _IS_SERVERLESS:
+        try:
+            conn.execute("PRAGMA journal_mode=WAL")
+        except Exception:
+            pass
+    else:
+        try:
+            conn.execute("PRAGMA journal_mode=DELETE")
+        except Exception:
+            pass
     return conn
 
 
@@ -277,7 +297,10 @@ def ddmmyyyy(value):
         except Exception:
             pass
         return str(value)
-init_db()
+try:
+    init_db()
+except Exception as _e:
+    print(f"[Warning] init_db failed on startup: {_e}")
 
 
 # ──────────────────────────────────────────────

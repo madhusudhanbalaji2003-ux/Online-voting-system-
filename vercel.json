@@ -1,28 +1,15 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "app.py",
-      "use": "@vercel/python",
-      "config": {
-        "maxDuration": 30,
-        "includeFiles": [
-          "face_detection_yunet.onnx",
-          "face_recognition_sface.onnx",
-          "database.db",
-          "blockchain_chain.db"
-        ]
-      }
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 30,
+      "includeFiles": "{templates/**,static/**,*.onnx,*.db}"
     }
-  ],
-  "routes": [
+  },
+  "rewrites": [
     {
-      "src": "/static/(.*)",
-      "dest": "/static/$1"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "app.py"
+      "source": "/(.*)",
+      "destination": "/api/index"
     }
   ]
 }
