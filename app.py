@@ -18,9 +18,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from functools import wraps
 
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.date import DateTrigger
-
 import numpy as np
 from flask import (Flask, flash, jsonify, redirect, render_template, request,
                    session, url_for)
@@ -35,12 +32,16 @@ from face_utils import (analyze_liveness_frames, compare_faces,
 # Flask App Configuration
 # ──────────────────────────────────────────────
 app = Flask(__name__)
-app.secret_key = os.urandom(32).hex()
-app.config["UPLOAD_FOLDER"] = os.path.join(app.static_folder, "uploads", "faces")
-app.config["CANDIDATE_UPLOAD_FOLDER"] = os.path.join(app.static_folder, "uploads", "candidates")
+# Use a fixed secret key (from env var) so sessions survive cold starts on Vercel
+app.secret_key = os.environ.get("SECRET_KEY", "securevote-default-secret-key-change-in-prod")
+
+# Use /tmp on Vercel (read-only filesystem outside /tmp); fall back to static/ locally
+_TMP_BASE = "/tmp" if os.environ.get("VERCEL") else os.path.join(app.static_folder, "uploads")
+app.config["UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "faces")
+app.config["CANDIDATE_UPLOAD_FOLDER"] = os.path.join(_TMP_BASE, "candidates")
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
 
-# Create upload directories
+# Create upload directories (safe on both Vercel /tmp and local static/)
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 
@@ -59,19 +60,33 @@ ADMIN_PASSWORD = "admin123"
 
 # ──────────────────────────────────────────────
 # Background Scheduler (voting-start auto-notify)
+# Disabled on Vercel (serverless — no persistent threads)
 # ──────────────────────────────────────────────
-_scheduler = BackgroundScheduler(daemon=True)
-_scheduler.start()
+_IS_VERCEL = bool(os.environ.get("VERCEL"))
+_scheduler = None
+if not _IS_VERCEL:
+    from apscheduler.schedulers.background import BackgroundScheduler
+    from apscheduler.triggers.date import DateTrigger
+    _scheduler = BackgroundScheduler(daemon=True)
+    _scheduler.start()
+else:
+    # Stub imports so the rest of the code doesn't break
+    try:
+        from apscheduler.triggers.date import DateTrigger
+    except ImportError:
+        DateTrigger = None
 
 # ──────────────────────────────────────────────
 # Blockchain Instance
+# Persisted to SQLite so votes survive Vercel cold starts
 # ──────────────────────────────────────────────
 blockchain = Blockchain()
 
 # ──────────────────────────────────────────────
 # Database Setup
 # ──────────────────────────────────────────────
-DB_PATH = os.path.join(os.path.dirname(__file__), "database.db")
+# Use /tmp on Vercel (writable); fall back to project root locally
+DB_PATH = "/tmp/database.db" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "database.db")
 
 
 def get_db():
@@ -319,6 +334,9 @@ def _auto_notify_voting_start(election_id):
 
 def schedule_voting_start_job(election_id, start_dt):
     """Schedule (or re-schedule) the auto-notify job for this election."""
+    if _scheduler is None:
+        print("[Scheduler] Disabled on Vercel — skipping auto-notify scheduling.")
+        return
     job_id = f"voting_start_{election_id}"
     # Remove existing job if any
     if _scheduler.get_job(job_id):
@@ -1444,6 +1462,8 @@ def admin_allowed_voters():
 @admin_required
 def api_scheduler_status():
     """Return info about pending scheduled jobs (admin only)."""
+    if _scheduler is None:
+        return jsonify({"jobs": [], "note": "Scheduler disabled on Vercel serverless."})
     jobs = []
     for job in _scheduler.get_jobs():
         jobs.append({

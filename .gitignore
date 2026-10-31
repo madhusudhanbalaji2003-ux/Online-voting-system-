@@ -30,6 +30,7 @@ instance/
 
 # Local voter database and uploaded voter/candidate images
 /database.db
+/blockchain_chain.db
 /static/uploads/
 
 # Face model files (large binaries — tracked separately if needed)

@@ -3,10 +3,15 @@
   "functions": {
     "app.py": {
       "runtime": "vercel-python@3.0.7",
+      "maxDuration": 30,
       "includeFiles": "*.onnx"
     }
   },
   "routes": [
+    {
+      "src": "/static/(.*)",
+      "dest": "/static/$1"
+    },
     {
       "src": "/(.*)",
       "dest": "app.py"
