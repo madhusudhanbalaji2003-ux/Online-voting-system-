@@ -51,20 +51,38 @@ let stream = null;
 async function startCamera() {
     try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('Webcam not supported or page is not loaded over HTTPS / localhost.');
+            throw new Error('NOT_SUPPORTED');
         }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
-        document.getElementById('video').srcObject = stream;
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+            });
+        } catch (constraintErr) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        await video.play().catch(function() {});
         document.getElementById('webcam-box').style.display = 'block';
         document.getElementById('startCamBtn').style.display = 'none';
         document.getElementById('matchBtn').style.display = 'inline-flex';
         document.getElementById('alert-box').innerHTML = '';
     } catch (e) {
+        let errDesc = 'Please click the <strong>lock/camera icon</strong> in your browser address bar (next to the URL) → set <strong>Camera</strong> to <strong>Allow</strong> → then click Retry below or reload this page.';
+        if (e.name === 'NotFoundError') {
+            errDesc = 'No webcam found. Please plug in or enable your camera.';
+        } else if (e.name === 'NotReadableError') {
+            errDesc = 'Camera is in use by another app (e.g. Teams, Zoom). Please close it and retry.';
+        }
         document.getElementById('alert-box').innerHTML = `
             <div class="alert alert-danger" style="text-align:left;">
                 <strong>⚠️ Camera access blocked or unavailable</strong><br>
                 <span style="font-size:0.85rem;display:block;margin-top:4px;">
-                    Please click the <strong>lock/camera icon</strong> in your browser address bar (next to the URL) → set <strong>Camera</strong> to <strong>Allow</strong> → then click Retry below or reload this page.
+                    ${errDesc}
                 </span>
                 <button type="button" class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:0.8rem;" onclick="startCamera()">🔄 Retry Camera</button>
             </div>
@@ -114,8 +132,20 @@ async function startLivenessCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             throw new Error('Webcam not supported.');
         }
-        stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
-        document.getElementById('liveness-video').srcObject = stream;
+        if (stream) {
+            stream.getTracks().forEach(t => t.stop());
+            stream = null;
+        }
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' }
+            });
+        } catch (constraintErr) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        }
+        const video = document.getElementById('liveness-video');
+        video.srcObject = stream;
+        await video.play().catch(function() {});
     } catch {
         document.getElementById('alert-box').innerHTML = `
             <div class="alert alert-danger" style="text-align:left;">
