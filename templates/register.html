@@ -12,12 +12,14 @@
         <form id="registerForm" class="voter-reg-form">
             <div class="voter-field">
                 <label for="name" class="voter-label">Full Name</label>
-                <input type="text" id="name" class="voter-input" placeholder="Enter your full name" required autocomplete="name">
+                <input type="text" id="name" class="voter-input" placeholder="Enter your full name" required
+                    autocomplete="name">
             </div>
 
             <div class="voter-field">
                 <label for="email" class="voter-label">Email Address</label>
-                <input type="email" id="email" class="voter-input" placeholder="your.email@example.com" required autocomplete="email">
+                <input type="email" id="email" class="voter-input" placeholder="your.email@example.com" required
+                    autocomplete="email">
             </div>
 
             <div class="voter-field">
@@ -28,7 +30,8 @@
             <div class="voter-field">
                 <label for="date_of_birth" class="voter-label">Date of Birth (Must be 18+ years old)</label>
                 <input type="date" id="date_of_birth" class="voter-input" required>
-                <div id="dob-hint" class="voter-reg-hint">You must be born on or before Fri Sep 26 2008 to be eligible.</div>
+                <div id="dob-hint" class="voter-reg-hint">You must be born on or before Fri Sep 26 2008 to be eligible.
+                </div>
             </div>
 
             <div class="voter-field">
@@ -37,7 +40,9 @@
                 <!-- Webcam container -->
                 <div class="voter-webcam-box" id="webcam-box" style="display:none;">
                     <video id="video" autoplay playsinline></video>
-                    <div class="webcam-overlay"><div class="face-guide"></div></div>
+                    <div class="webcam-overlay">
+                        <div class="face-guide"></div>
+                    </div>
                 </div>
                 <canvas id="canvas" style="display:none;"></canvas>
 
@@ -46,15 +51,22 @@
                     <button type="button" id="startCamBtn" class="voter-cam-btn" onclick="startCamera()">
                         📷 START CAMERA
                     </button>
-                    <button type="button" id="uploadBtn" class="voter-cam-btn" style="background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.2)!important;" onclick="document.getElementById('faceFileInput').click()">
+                    <button type="button" id="uploadBtn" class="voter-cam-btn"
+                        style="background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.2)!important;"
+                        onclick="document.getElementById('faceFileInput').click()">
                         📁 UPLOAD PHOTO
                     </button>
-                    <input type="file" id="faceFileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+                    <input type="file" id="faceFileInput" accept="image/*" style="display:none;"
+                        onchange="handleFileUpload(event)">
                     <div id="cam-live-controls" style="display:none;gap:10px;margin-top:10px;width:100%;">
-                        <button type="button" id="captureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="capturePhoto()">
+                        <button type="button" id="captureBtn" class="voter-cam-btn"
+                            style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;"
+                            onclick="capturePhoto()">
                             📸 CAPTURE FACE
                         </button>
-                        <button type="button" class="voter-cam-btn" style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;" onclick="cancelCamera()">
+                        <button type="button" class="voter-cam-btn"
+                            style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;"
+                            onclick="cancelCamera()">
                             CANCEL
                         </button>
                     </div>
@@ -62,13 +74,19 @@
 
                 <!-- Captured Preview -->
                 <div id="captured-preview" style="margin-top:12px;display:none;">
-                    <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.02);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
-                        <img id="preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
+                    <div
+                        style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.02);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
+                        <img id="preview-img"
+                            style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
                         <div>
-                            <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
+                            <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face
+                                captured!</div>
                             <div style="display:flex;gap:8px;">
-                                <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startCamera()">RETAKE CAM</button>
-                                <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;background:#1e293b!important;color:#f8fafc!important;" onclick="document.getElementById('faceFileInput').click()">CHANGE PHOTO</button>
+                                <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;"
+                                    onclick="startCamera()">RETAKE CAM</button>
+                                <button type="button" class="voter-cam-btn"
+                                    style="padding:5px 12px;font-size:0.74rem;background:#1e293b!important;color:#f8fafc!important;"
+                                    onclick="document.getElementById('faceFileInput').click()">CHANGE PHOTO</button>
                             </div>
                         </div>
                     </div>
@@ -97,7 +115,7 @@
     let stream = null;
     let capturedImage = null;
 
-    function showAlert(msg, type='danger') {
+    function showAlert(msg, type = 'danger') {
         document.getElementById('alert-box').innerHTML = `<div class="alert alert-${type}" style="margin-bottom:1.25rem;">${msg}</div>`;
     }
 
@@ -143,7 +161,7 @@
             return;
         }
         const reader = new FileReader();
-        reader.onload = function(e) {
+        reader.onload = function (e) {
             capturedImage = e.target.result;
             const previewImg = document.getElementById('preview-img');
             if (previewImg) previewImg.src = capturedImage;
@@ -264,4 +282,3 @@
     });
 </script>
 {% endblock %}
-
