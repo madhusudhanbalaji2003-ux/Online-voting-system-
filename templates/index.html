@@ -264,11 +264,15 @@
                         <canvas id="sec-canvas" style="display:none;"></canvas>
 
                         <!-- Action Controls -->
-                        <div id="sec-cam-action-group">
+                        <div id="sec-cam-action-group" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
                             <button type="button" id="secStartCamBtn" class="voter-cam-btn" onclick="startSectionCamera()">
-                                START CAMERA
+                                📷 START CAMERA
                             </button>
-                            <div id="sec-cam-live-controls" style="display:none;gap:10px;margin-top:10px;">
+                            <button type="button" id="secUploadBtn" class="voter-cam-btn" style="background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.2)!important;" onclick="document.getElementById('secFaceFileInput').click()">
+                                📁 UPLOAD PHOTO
+                            </button>
+                            <input type="file" id="secFaceFileInput" accept="image/*" style="display:none;" onchange="handleSectionFileUpload(event)">
+                            <div id="sec-cam-live-controls" style="display:none;gap:10px;margin-top:10px;width:100%;">
                                 <button type="button" id="secCaptureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="captureSectionPhoto()">
                                     📸 CAPTURE FACE
                                 </button>
@@ -284,7 +288,10 @@
                                 <img id="sec-preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
                                 <div>
                                     <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
-                                    <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startSectionCamera()">RETAKE</button>
+                                    <div style="display:flex;gap:8px;">
+                                        <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startSectionCamera()">RETAKE CAM</button>
+                                        <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;background:#1e293b!important;color:#f8fafc!important;" onclick="document.getElementById('secFaceFileInput').click()">CHANGE PHOTO</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -769,6 +776,9 @@ function showSecRegAlert(msg, type='danger') {
 
 async function startSectionCamera() {
     try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Webcam API is not available (browser requires HTTPS or localhost).');
+        }
         secStream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480, facingMode: 'user' }
         });
@@ -776,11 +786,61 @@ async function startSectionCamera() {
         video.srcObject = secStream;
         document.getElementById('sec-webcam-box').style.display = 'block';
         document.getElementById('secStartCamBtn').style.display = 'none';
+        var upBtn = document.getElementById('secUploadBtn');
+        if (upBtn) upBtn.style.display = 'none';
         document.getElementById('sec-cam-live-controls').style.display = 'flex';
         document.getElementById('sec-captured-preview').style.display = 'none';
+        // Clear previous error
+        var box = document.getElementById('sec-reg-alert');
+        if (box) box.innerHTML = '';
     } catch (e) {
-        showSecRegAlert('Camera access denied. Please grant webcam permissions to capture your biometric face.');
+        console.warn('Camera access denied/error:', e);
+        var msg = `
+            <div style="text-align:left;">
+                <div style="font-weight:700;margin-bottom:6px;">⚠️ Camera access blocked or unavailable</div>
+                <div style="font-size:0.86rem;line-height:1.45;color:#fecaca;margin-bottom:10px;">
+                    1. <strong>To enable camera:</strong> Click the <strong>lock / camera icon</strong> on the left side of your browser address bar → set <strong>Camera</strong> to <strong>Allow</strong> → reload page.<br>
+                    2. <strong>Or Upload Directly:</strong> Click the <strong>"📁 UPLOAD PHOTO"</strong> button below to choose your photo from your device.
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button type="button" class="voter-cam-btn" style="padding:4px 12px;font-size:0.78rem;height:32px;min-height:32px;" onclick="startSectionCamera()">🔄 RETRY CAMERA</button>
+                    <button type="button" class="voter-cam-btn" style="padding:4px 12px;font-size:0.78rem;height:32px;min-height:32px;background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.25)!important;" onclick="document.getElementById('secFaceFileInput').click()">📁 CHOOSE PHOTO</button>
+                </div>
+            </div>
+        `;
+        showSecRegAlert(msg);
     }
+}
+
+function handleSectionFileUpload(event) {
+    var file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+        showSecRegAlert('Please select a valid image file (JPG, PNG, WebP).');
+        return;
+    }
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        secCapturedImage = e.target.result;
+        var previewImg = document.getElementById('sec-preview-img');
+        if (previewImg) previewImg.src = secCapturedImage;
+        document.getElementById('sec-captured-preview').style.display = 'block';
+        document.getElementById('sec-webcam-box').style.display = 'none';
+        document.getElementById('sec-cam-live-controls').style.display = 'none';
+        document.getElementById('secStartCamBtn').style.display = 'inline-flex';
+        var upBtn = document.getElementById('secUploadBtn');
+        if (upBtn) upBtn.style.display = 'inline-flex';
+
+        if (secStream) {
+            secStream.getTracks().forEach(track => track.stop());
+            secStream = null;
+        }
+
+        var submitBtn = document.getElementById('secSubmitBtn');
+        if (submitBtn) submitBtn.disabled = false;
+        showSecRegAlert('✅ Photo selected successfully! You can now submit your registration.', 'success');
+    };
+    reader.readAsDataURL(file);
 }
 
 function cancelSectionCamera() {
@@ -791,6 +851,8 @@ function cancelSectionCamera() {
     document.getElementById('sec-webcam-box').style.display = 'none';
     document.getElementById('sec-cam-live-controls').style.display = 'none';
     document.getElementById('secStartCamBtn').style.display = 'inline-flex';
+    var upBtn = document.getElementById('secUploadBtn');
+    if (upBtn) upBtn.style.display = 'inline-flex';
     if (secCapturedImage) {
         document.getElementById('sec-captured-preview').style.display = 'block';
     }
@@ -810,7 +872,9 @@ function captureSectionPhoto() {
     document.getElementById('sec-captured-preview').style.display = 'block';
     document.getElementById('sec-webcam-box').style.display = 'none';
     document.getElementById('sec-cam-live-controls').style.display = 'none';
-    document.getElementById('secStartCamBtn').style.display = 'none';
+    document.getElementById('secStartCamBtn').style.display = 'inline-flex';
+    var upBtn = document.getElementById('secUploadBtn');
+    if (upBtn) upBtn.style.display = 'inline-flex';
 
     if (secStream) {
         secStream.getTracks().forEach(track => track.stop());

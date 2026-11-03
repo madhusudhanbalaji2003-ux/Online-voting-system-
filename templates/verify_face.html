@@ -50,13 +50,25 @@ let stream = null;
 
 async function startCamera() {
     try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Webcam not supported or page is not loaded over HTTPS / localhost.');
+        }
         stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
         document.getElementById('video').srcObject = stream;
         document.getElementById('webcam-box').style.display = 'block';
         document.getElementById('startCamBtn').style.display = 'none';
         document.getElementById('matchBtn').style.display = 'inline-flex';
-    } catch {
-        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Camera access denied.</div>';
+        document.getElementById('alert-box').innerHTML = '';
+    } catch (e) {
+        document.getElementById('alert-box').innerHTML = `
+            <div class="alert alert-danger" style="text-align:left;">
+                <strong>⚠️ Camera access blocked or unavailable</strong><br>
+                <span style="font-size:0.85rem;display:block;margin-top:4px;">
+                    Please click the <strong>lock/camera icon</strong> in your browser address bar (next to the URL) → set <strong>Camera</strong> to <strong>Allow</strong> → then click Retry below or reload this page.
+                </span>
+                <button type="button" class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:0.8rem;" onclick="startCamera()">🔄 Retry Camera</button>
+            </div>
+        `;
     }
 }
 
@@ -99,10 +111,21 @@ async function matchFace() {
 
 async function startLivenessCamera() {
     try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error('Webcam not supported.');
+        }
         stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
         document.getElementById('liveness-video').srcObject = stream;
     } catch {
-        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Camera access denied for liveness.</div>';
+        document.getElementById('alert-box').innerHTML = `
+            <div class="alert alert-danger" style="text-align:left;">
+                <strong>⚠️ Camera access blocked for liveness test</strong><br>
+                <span style="font-size:0.85rem;display:block;margin-top:4px;">
+                    Please click the <strong>lock/camera icon</strong> in your browser address bar → set <strong>Camera</strong> to <strong>Allow</strong>.
+                </span>
+                <button type="button" class="btn btn-outline" style="margin-top:8px;padding:4px 12px;font-size:0.8rem;" onclick="startLivenessCamera()">🔄 Retry Camera</button>
+            </div>
+        `;
     }
 }
 

@@ -42,11 +42,15 @@
                 <canvas id="canvas" style="display:none;"></canvas>
 
                 <!-- Action Controls -->
-                <div id="cam-action-group">
+                <div id="cam-action-group" style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
                     <button type="button" id="startCamBtn" class="voter-cam-btn" onclick="startCamera()">
-                        START CAMERA
+                        📷 START CAMERA
                     </button>
-                    <div id="cam-live-controls" style="display:none;gap:10px;margin-top:10px;">
+                    <button type="button" id="uploadBtn" class="voter-cam-btn" style="background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.2)!important;" onclick="document.getElementById('faceFileInput').click()">
+                        📁 UPLOAD PHOTO
+                    </button>
+                    <input type="file" id="faceFileInput" accept="image/*" style="display:none;" onchange="handleFileUpload(event)">
+                    <div id="cam-live-controls" style="display:none;gap:10px;margin-top:10px;width:100%;">
                         <button type="button" id="captureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="capturePhoto()">
                             📸 CAPTURE FACE
                         </button>
@@ -62,7 +66,10 @@
                         <img id="preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
                         <div>
                             <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
-                            <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startCamera()">RETAKE</button>
+                            <div style="display:flex;gap:8px;">
+                                <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startCamera()">RETAKE CAM</button>
+                                <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;background:#1e293b!important;color:#f8fafc!important;" onclick="document.getElementById('faceFileInput').click()">CHANGE PHOTO</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -96,16 +103,66 @@
 
     async function startCamera() {
         try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error('Webcam API is not available (browser requires HTTPS or localhost).');
+            }
             stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
             const video = document.getElementById('video');
             video.srcObject = stream;
             document.getElementById('webcam-box').style.display = 'block';
             document.getElementById('startCamBtn').style.display = 'none';
+            const upBtn = document.getElementById('uploadBtn');
+            if (upBtn) upBtn.style.display = 'none';
             document.getElementById('cam-live-controls').style.display = 'flex';
             document.getElementById('captured-preview').style.display = 'none';
+            document.getElementById('alert-box').innerHTML = '';
         } catch (e) {
-            showAlert('Camera access denied. Please allow camera permissions to capture your biometric face.');
+            console.warn('Camera access denied/error:', e);
+            const msg = `
+                <div style="text-align:left;">
+                    <div style="font-weight:700;margin-bottom:6px;">⚠️ Camera access blocked or unavailable</div>
+                    <div style="font-size:0.86rem;line-height:1.45;color:#fecaca;margin-bottom:10px;">
+                        1. <strong>To enable camera:</strong> Click the <strong>lock / camera icon</strong> on the left side of your browser address bar → set <strong>Camera</strong> to <strong>Allow</strong> → reload page.<br>
+                        2. <strong>Or Upload Directly:</strong> Click the <strong>"📁 UPLOAD PHOTO"</strong> button below to choose your photo from your device.
+                    </div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button type="button" class="voter-cam-btn" style="padding:4px 12px;font-size:0.78rem;height:32px;min-height:32px;" onclick="startCamera()">🔄 RETRY CAMERA</button>
+                        <button type="button" class="voter-cam-btn" style="padding:4px 12px;font-size:0.78rem;height:32px;min-height:32px;background:#1e293b!important;color:#f8fafc!important;border-color:rgba(255,255,255,0.25)!important;" onclick="document.getElementById('faceFileInput').click()">📁 CHOOSE PHOTO</button>
+                    </div>
+                </div>
+            `;
+            showAlert(msg);
         }
+    }
+
+    function handleFileUpload(event) {
+        const file = event.target.files && event.target.files[0];
+        if (!file) return;
+        if (!file.type.startsWith('image/')) {
+            showAlert('Please select a valid image file (JPG, PNG, WebP).');
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            capturedImage = e.target.result;
+            const previewImg = document.getElementById('preview-img');
+            if (previewImg) previewImg.src = capturedImage;
+            document.getElementById('captured-preview').style.display = 'block';
+            document.getElementById('webcam-box').style.display = 'none';
+            document.getElementById('cam-live-controls').style.display = 'none';
+            document.getElementById('startCamBtn').style.display = 'inline-flex';
+            const upBtn = document.getElementById('uploadBtn');
+            if (upBtn) upBtn.style.display = 'inline-flex';
+
+            if (stream) {
+                stream.getTracks().forEach(t => t.stop());
+                stream = null;
+            }
+
+            document.getElementById('submitBtn').disabled = false;
+            showAlert('✅ Photo selected successfully! You can now submit your registration.', 'success');
+        };
+        reader.readAsDataURL(file);
     }
 
     function cancelCamera() {
@@ -116,6 +173,8 @@
         document.getElementById('webcam-box').style.display = 'none';
         document.getElementById('cam-live-controls').style.display = 'none';
         document.getElementById('startCamBtn').style.display = 'inline-flex';
+        const upBtn = document.getElementById('uploadBtn');
+        if (upBtn) upBtn.style.display = 'inline-flex';
         if (capturedImage) {
             document.getElementById('captured-preview').style.display = 'block';
         }
