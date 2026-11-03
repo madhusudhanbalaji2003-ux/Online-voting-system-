@@ -1,3 +1,17 @@
+[project]
+name = "online-voting-system"
+version = "1.0.0"
+description = "SecureVote - Online Voting System with Face Recognition and Blockchain"
+requires-python = ">=3.11"
+dependencies = [
+    "Flask==3.1.1",
+    "opencv-python-headless==4.11.0.86",
+    "numpy==2.2.6",
+    "Pillow==11.2.1",
+    "APScheduler>=3.10.4",
+    "gunicorn>=23.0.0",
+]
+
 [tool.pyrefly]
 python-interpreter-path = ".venv/Scripts/python.exe"
 search-path = [
