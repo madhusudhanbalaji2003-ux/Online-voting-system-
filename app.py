@@ -2258,7 +2258,7 @@ def detect_face():
 # ──────────────────────────────────────────────
 # Run
 # ──────────────────────────────────────────────
-if __name__ == "__main__":
+def main():
     _smtp_email, _smtp_pass = _get_smtp_credentials()
     print("\n" + "=" * 60)
     print("  SecureVote - Online Voting System")
@@ -2272,3 +2272,7 @@ if __name__ == "__main__":
     print(f"  http://0.0.0.0:{port}")
     print("=" * 60 + "\n")
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
