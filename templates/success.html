@@ -3,310 +3,676 @@
 
 {% block content %}
 <div class="container-sm">
-    <div class="vote-success-wrapper fade-in">
+  <div class="vote-success-wrapper fade-in">
 
-        <!-- Confetti burst (CSS only) -->
-        <div class="confetti-ring" aria-hidden="true">
-            <span></span><span></span><span></span><span></span>
-            <span></span><span></span><span></span><span></span>
+    <!-- ── Floating confetti particles ── -->
+    <div class="confetti-wrap" aria-hidden="true">
+      {% for i in range(30) %}<span class="cp"></span>{% endfor %}
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 1 — Big "✅ Successfully Voted" Banner
+         ══════════════════════════════════════════════ -->
+    <div class="sv-banner">
+      <div class="sv-check-ring">
+        <svg width="56" height="56" viewBox="0 0 24 24" fill="none"
+             stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+      </div>
+      <h1 class="sv-headline">Successfully Voted!</h1>
+      <p class="sv-sub">Your vote has been securely recorded on the blockchain.</p>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 2 — Email Sent Confirmation Strip
+         ══════════════════════════════════════════════ -->
+    <div class="sv-email-strip">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="4" width="20" height="16" rx="2"/>
+        <polyline points="2,4 12,13 22,4"/>
+      </svg>
+      <span>Acknowledgement email sent to <strong>{{ masked_email }}</strong></span>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 3 — "I VOTED" Certificate Card
+         (Canvas-rendered, downloadable as PNG image)
+         ══════════════════════════════════════════════ -->
+    <div class="sv-cert-wrap">
+      <p class="sv-cert-label">🏅 Your Official Voting Certificate</p>
+      <canvas id="voteCertCanvas" width="680" height="400"
+              style="border-radius:16px;max-width:100%;display:block;cursor:pointer;"
+              title="Click to download your Voting Certificate"></canvas>
+      <button class="sv-dl-btn" id="downloadCertBtn">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Download Certificate
+      </button>
+
+      <!-- Certificate email status pill -->
+      <div id="cert-email-status" class="sv-cert-status sv-cert-sending">
+        <span class="sv-cert-spinner"></span>
+        <span id="cert-status-text">Sending certificate to your email…</span>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 4 — Info Cards Row
+         ══════════════════════════════════════════════ -->
+    <div class="sv-cards-row">
+
+      <!-- Timestamp -->
+      <div class="sv-info-card sv-card-green">
+        <div class="sv-ic-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Voted On
         </div>
+        <div class="sv-ic-value">{{ voted_at }}</div>
+      </div>
 
-        <!-- Trophy / checkmark icon -->
-        <div class="vs-icon-circle">
-            <svg width="52" height="52" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-            </svg>
+      <!-- Election -->
+      <div class="sv-info-card sv-card-purple">
+        <div class="sv-ic-label">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          Election
         </div>
-
-        <!-- Headline -->
-        <h1 class="vs-headline">Congratulations!</h1>
-        <p class="vs-tagline">You have successfully cast your vote.</p>
-
-        <!-- Timestamp card -->
-        <div class="vs-timestamp-card">
-            <div class="vs-ts-label">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.2"
-                     stroke-linecap="round" stroke-linejoin="round" style="opacity:.7">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                </svg>
-                Voted on
-            </div>
-            <div class="vs-ts-value">{{ voted_at }}</div>
-        </div>
-
-        <!-- Privacy notice -->
-        <div class="vs-privacy-note">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none"
-                 stroke="currentColor" stroke-width="2.2"
-                 stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Your ballot is private. The choice you made will never be disclosed.
-        </div>
-
-        <!-- Blockchain receipt (collapsible) -->
-        <details class="vs-receipt">
-            <summary>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.2"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
-                </svg>
-                Blockchain Receipt
-                <svg class="vs-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2.5"
-                     stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="6 9 12 15 18 9"/>
-                </svg>
-            </summary>
-            <div class="vs-receipt-body">
-                <div class="vs-hash-label">Block Hash (Immutable Receipt)</div>
-                <div class="vs-hash-value">{{ block_hash }}</div>
-                <p class="vs-hash-note">
-                    🔒 This cryptographic hash is your tamper-proof vote receipt recorded on the blockchain.
-                    It confirms your vote was counted without revealing your choice.
-                </p>
-            </div>
-        </details>
-
-        <!-- Actions -->
-        <div class="vs-actions">
-            <a href="{{ url_for('index') }}" class="btn btn-primary">🏠 Back to Home</a>
-            <a href="{{ url_for('results') }}" class="btn btn-outline">📊 View Results</a>
-        </div>
+        <div class="sv-ic-value">{{ election_title }}</div>
+      </div>
 
     </div>
-</div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 5 — Privacy Notice
+         ══════════════════════════════════════════════ -->
+    <div class="sv-privacy">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
+           stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      Your ballot is completely private. The choice you made will never be disclosed.
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 6 — Blockchain Receipt (collapsible)
+         ══════════════════════════════════════════════ -->
+    <details class="sv-receipt">
+      <summary>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+        </svg>
+        Blockchain Receipt
+        <svg class="sv-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </summary>
+      <div class="sv-receipt-body">
+        <div class="sv-hash-label">Block Hash (Immutable Receipt)</div>
+        <div class="sv-hash-value">{{ block_hash }}</div>
+        <p class="sv-hash-note">
+          🔒 This cryptographic hash is your tamper-proof vote receipt recorded on the blockchain.
+          It confirms your vote was counted without revealing your choice.
+        </p>
+      </div>
+    </details>
+
+    <!-- ══════════════════════════════════════════════
+         SECTION 7 — Action Buttons
+         ══════════════════════════════════════════════ -->
+    <div class="sv-actions">
+      <a href="{{ url_for('index') }}" class="btn btn-primary">🏠 Back to Home</a>
+      <a href="{{ url_for('results') }}" class="btn btn-outline">📊 View Results</a>
+    </div>
+
+  </div><!-- /.vote-success-wrapper -->
+</div><!-- /.container-sm -->
+
+
+<!-- ══════════════════════════════════════════════
+     Canvas Certificate Generator
+     ══════════════════════════════════════════════ -->
+<script>
+(function () {
+  /* ── Data from Flask ── */
+  const VOTER_NAME     = {{ voter_name     | tojson }};
+  const ELECTION_TITLE = {{ election_title | tojson }};
+  const VOTED_AT       = {{ voted_at       | tojson }};
+  const BLOCK_HASH     = {{ block_hash     | tojson }};
+
+  /* ── Draw certificate on <canvas> ── */
+  function drawCertificate() {
+    const canvas = document.getElementById("voteCertCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    const W = canvas.width, H = canvas.height;
+
+    /* Background */
+    const bg = ctx.createLinearGradient(0, 0, W, H);
+    bg.addColorStop(0,   "#0d1117");
+    bg.addColorStop(0.5, "#0f1623");
+    bg.addColorStop(1,   "#120d1f");
+    ctx.fillStyle = bg;
+    ctx.roundRect(0, 0, W, H, 20);
+    ctx.fill();
+
+    /* Decorative corner arcs */
+    function cornerArc(cx, cy, r, start, end) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r, start, end);
+      ctx.strokeStyle = "rgba(52,211,153,0.15)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    cornerArc(0,   0,   80,  0,        Math.PI/2);
+    cornerArc(W,   0,   80,  Math.PI/2,Math.PI);
+    cornerArc(W,   H,   80,  Math.PI,  3*Math.PI/2);
+    cornerArc(0,   H,   80,  3*Math.PI/2,2*Math.PI);
+
+    /* Top gradient bar */
+    const bar = ctx.createLinearGradient(0, 0, W, 0);
+    bar.addColorStop(0,   "#34d399");
+    bar.addColorStop(0.5, "#38bdf8");
+    bar.addColorStop(1,   "#a78bfa");
+    ctx.fillStyle = bar;
+    ctx.roundRect(0, 0, W, 5, [20, 20, 0, 0]);
+    ctx.fill();
+
+    /* Bottom gradient bar */
+    ctx.fillStyle = bar;
+    ctx.roundRect(0, H - 5, W, 5, [0, 0, 20, 20]);
+    ctx.fill();
+
+    /* Faint "VOTED" watermark */
+    ctx.save();
+    ctx.globalAlpha = 0.04;
+    ctx.font = "bold 160px Arial";
+    ctx.fillStyle = "#34d399";
+    ctx.textAlign = "center";
+    ctx.fillText("VOTED", W / 2, H / 2 + 55);
+    ctx.restore();
+
+    /* ── Big checkmark badge ── */
+    const cx = W / 2, cy = 95;
+    // Outer glow rings
+    [40, 32, 24].forEach((r, i) => {
+      ctx.beginPath();
+      ctx.arc(cx, cy, r + 14, 0, 2 * Math.PI);
+      ctx.fillStyle = `rgba(52,211,153,${[0.05, 0.08, 0.12][i]})`;
+      ctx.fill();
+    });
+    // Gradient circle
+    const circleGrad = ctx.createRadialGradient(cx - 8, cy - 8, 2, cx, cy, 36);
+    circleGrad.addColorStop(0, "#38bdf8");
+    circleGrad.addColorStop(1, "#34d399");
+    ctx.beginPath();
+    ctx.arc(cx, cy, 36, 0, 2 * Math.PI);
+    ctx.fillStyle = circleGrad;
+    ctx.fill();
+    // Checkmark
+    ctx.beginPath();
+    ctx.moveTo(cx - 14, cy);
+    ctx.lineTo(cx - 4,  cy + 11);
+    ctx.lineTo(cx + 16, cy - 12);
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.stroke();
+
+    /* ── "I VOTED" headline ── */
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 42px Arial";
+    ctx.fillText("I VOTED", W / 2, 182);
+
+    /* Underline accent */
+    const ulGrad = ctx.createLinearGradient(W/2 - 70, 0, W/2 + 70, 0);
+    ulGrad.addColorStop(0, "transparent");
+    ulGrad.addColorStop(0.3, "#34d399");
+    ulGrad.addColorStop(0.7, "#38bdf8");
+    ulGrad.addColorStop(1, "transparent");
+    ctx.fillStyle = ulGrad;
+    ctx.fillRect(W/2 - 70, 190, 140, 3);
+
+    /* ── Voter name ── */
+    ctx.fillStyle = "#34d399";
+    ctx.font = "700 22px Arial";
+    ctx.fillText(VOTER_NAME, W / 2, 230);
+
+    /* ── Election ── */
+    ctx.fillStyle = "#c4b5fd";
+    ctx.font = "15px Arial";
+    ctx.fillText(ELECTION_TITLE, W / 2, 258);
+
+    /* Divider */
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(60, 278); ctx.lineTo(W - 60, 278);
+    ctx.stroke();
+
+    /* ── Voted at ── */
+    ctx.fillStyle = "#64748b";
+    ctx.font = "11px Arial";
+    ctx.fillText("DATE & TIME", W / 2, 302);
+    ctx.fillStyle = "#94a3b8";
+    ctx.font = "13px Arial";
+    ctx.fillText(VOTED_AT, W / 2, 322);
+
+    /* ── Block hash (truncated) ── */
+    ctx.fillStyle = "#64748b";
+    ctx.font = "10px Arial";
+    ctx.fillText("BLOCKCHAIN RECEIPT", W / 2, 348);
+    ctx.fillStyle = "#a78bfa";
+    ctx.font = "10px 'Courier New', monospace";
+    const shortHash = BLOCK_HASH.length > 48 ? BLOCK_HASH.slice(0, 24) + "…" + BLOCK_HASH.slice(-20) : BLOCK_HASH;
+    ctx.fillText(shortHash, W / 2, 364);
+
+    /* ── SecureVote branding (bottom-right) ── */
+    ctx.textAlign = "right";
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.font = "bold 12px Arial";
+    ctx.fillText("SecureVote · Blockchain Verified", W - 24, H - 18);
+
+    /* ── Official seal (bottom-left) ── */
+    ctx.textAlign = "left";
+    ctx.fillStyle = "rgba(52,211,153,0.4)";
+    ctx.font = "bold 11px Arial";
+    ctx.fillText("✦ OFFICIAL DIGITAL CERTIFICATE", 24, H - 18);
+  }
+
+  /* ── Auto-email certificate to server ── */
+  async function emailCertificate() {
+    const canvas   = document.getElementById("voteCertCanvas");
+    const statusEl = document.getElementById("cert-email-status");
+    const textEl   = document.getElementById("cert-status-text");
+
+    try {
+      const res = await fetch("/api/email-certificate", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ image_data: canvas.toDataURL("image/png") })
+      });
+
+      // Guard: if the server returned a redirect/HTML page instead of JSON
+      // (e.g. session expired mid-request) show a friendly message.
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        statusEl.className = "sv-cert-status sv-cert-err";
+        textEl.textContent = "⚠️ Session expired — please log in again to receive the certificate.";
+        return;
+      }
+
+      const result = await res.json();
+
+      if (result.success) {
+        statusEl.className = "sv-cert-status sv-cert-ok";
+        textEl.textContent = "✅ Certificate sent to your registered email!";
+      } else {
+        statusEl.className = "sv-cert-status sv-cert-err";
+        textEl.textContent = "⚠️ " + (result.message || "Could not email certificate.");
+      }
+    } catch (err) {
+      statusEl.className = "sv-cert-status sv-cert-err";
+      textEl.textContent = "⚠️ Could not reach server — certificate not emailed.";
+      console.error("[emailCertificate]", err);
+    }
+  }
+
+  /* ── Download handler ── */
+  function downloadCertificate() {
+    const canvas = document.getElementById("voteCertCanvas");
+    const link   = document.createElement("a");
+    link.download = "SecureVote_Certificate.png";
+    link.href      = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+  /* Init */
+  document.addEventListener("DOMContentLoaded", function () {
+    drawCertificate();
+    emailCertificate();   // ← auto-send certificate PNG to voter's email
+    document.getElementById("voteCertCanvas").addEventListener("click", downloadCertificate);
+    document.getElementById("downloadCertBtn").addEventListener("click", downloadCertificate);
+  });
+})();
+</script>
+
 
 <style>
-/* ────────────────────────────────────────────
+/* ════════════════════════════════════════════
    Vote Success — Premium Acknowledgement Page
-   ──────────────────────────────────────────── */
+   ════════════════════════════════════════════ */
+
 .vote-success-wrapper {
-    max-width: 520px;
-    margin: 3rem auto 5rem;
-    padding: 0 1rem;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    position: relative;
+  max-width: 600px;
+  margin: 2rem auto 5rem;
+  padding: 0 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
 }
 
-/* ── Confetti ring ── */
-.confetti-ring {
-    position: absolute;
-    top: -20px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 160px;
-    height: 160px;
-    pointer-events: none;
-    z-index: 0;
+/* ── Confetti particles ── */
+.confetti-wrap {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 999;
 }
-.confetti-ring span {
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    top: 50%;
-    left: 50%;
-    transform-origin: 0 0;
-    animation: confettiBurst 0.75s cubic-bezier(0.2, 0.8, 0.3, 1) both;
+.cp {
+  position: absolute;
+  top: -10px;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0;
+  animation: fall linear forwards;
 }
-.confetti-ring span:nth-child(1)  { background: #38bdf8; transform: rotate(0deg)   translateX(68px); animation-delay: 0.05s; }
-.confetti-ring span:nth-child(2)  { background: #a78bfa; transform: rotate(45deg)  translateX(68px); animation-delay: 0.10s; }
-.confetti-ring span:nth-child(3)  { background: #34d399; transform: rotate(90deg)  translateX(68px); animation-delay: 0.15s; }
-.confetti-ring span:nth-child(4)  { background: #fbbf24; transform: rotate(135deg) translateX(68px); animation-delay: 0.20s; }
-.confetti-ring span:nth-child(5)  { background: #fb7185; transform: rotate(180deg) translateX(68px); animation-delay: 0.25s; }
-.confetti-ring span:nth-child(6)  { background: #38bdf8; transform: rotate(225deg) translateX(68px); animation-delay: 0.10s; }
-.confetti-ring span:nth-child(7)  { background: #a78bfa; transform: rotate(270deg) translateX(68px); animation-delay: 0.05s; }
-.confetti-ring span:nth-child(8)  { background: #34d399; transform: rotate(315deg) translateX(68px); animation-delay: 0.18s; }
-
-@keyframes confettiBurst {
-    from { opacity: 0; transform: rotate(var(--r, 0deg)) translateX(0); }
-    50%  { opacity: 1; }
-    to   { opacity: 0; }
+/* Each confetti piece gets different color / position / speed via nth-child */
+{% for i in range(30) %}
+.cp:nth-child({{ i + 1 }}) {
+  left: {{ (i * 3.4) | round(1) }}%;
+  background: hsl({{ i * 12 }}, 85%, 60%);
+  animation-duration: {{ 1.5 + (i % 7) * 0.3 }}s;
+  animation-delay: {{ (i % 10) * 0.12 }}s;
+  transform: rotate({{ i * 23 }}deg);
+  width: {{ 6 + (i % 4) * 3 }}px;
+}
+{% endfor %}
+@keyframes fall {
+  0%  { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+  100%{ transform: translateY(100vh) rotate(720deg); opacity: 0; }
 }
 
-/* ── Icon ── */
-.vs-icon-circle {
-    position: relative;
-    z-index: 1;
-    width: 96px;
-    height: 96px;
-    border-radius: 50%;
-    background: conic-gradient(from 135deg, #34d399, #38bdf8, #a78bfa, #34d399);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 1.75rem;
-    box-shadow:
-        0 0 0 8px rgba(52, 211, 153, 0.12),
-        0 0 0 18px rgba(52, 211, 153, 0.06),
-        0 12px 40px rgba(52, 211, 153, 0.35);
-    animation: popIn 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+/* ── Banner ── */
+.sv-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  animation: popIn 0.55s cubic-bezier(0.16,1,0.3,1) both;
 }
-.vs-icon-circle svg {
-    stroke: #ffffff;
-    filter: drop-shadow(0 0 6px rgba(255,255,255,0.5));
+.sv-check-ring {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: conic-gradient(from 135deg, #34d399, #38bdf8, #a78bfa, #34d399);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  box-shadow:
+    0 0 0 10px rgba(52,211,153,.10),
+    0 0 0 22px rgba(52,211,153,.05),
+    0 14px 48px rgba(52,211,153,.35);
 }
+.sv-headline {
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+  margin: 0 0 .4rem;
+  line-height: 1.1;
+}
+.sv-sub {
+  font-size: 1.05rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.5;
+  animation: slideUp 0.6s 0.15s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* ── Email strip ── */
+.sv-email-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: linear-gradient(135deg, rgba(52,211,153,.1), rgba(56,189,248,.08));
+  border: 1px solid rgba(52,211,153,.35);
+  border-radius: 9999px;
+  padding: 10px 22px;
+  font-size: 0.84rem;
+  color: #a7f3d0;
+  margin-bottom: 1.75rem;
+  animation: slideUp 0.6s 0.25s cubic-bezier(0.16,1,0.3,1) both;
+}
+.sv-email-strip svg { stroke: #34d399; flex-shrink: 0; }
+.sv-email-strip strong { color: #fff; }
+
+/* ── Certificate wrap ── */
+.sv-cert-wrap {
+  width: 100%;
+  margin-bottom: 1.75rem;
+  animation: slideUp 0.6s 0.35s cubic-bezier(0.16,1,0.3,1) both;
+}
+.sv-cert-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #64748b;
+  margin: 0 0 .75rem;
+}
+.sv-dl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 1rem;
+  background: linear-gradient(135deg, #34d399, #38bdf8);
+  color: #000;
+  border: none;
+  border-radius: 9999px;
+  padding: 10px 24px;
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: transform .2s, box-shadow .2s;
+  box-shadow: 0 4px 18px rgba(52,211,153,.3);
+}
+.sv-dl-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(52,211,153,.45); }
+
+/* ── Info cards row ── */
+.sv-cards-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 1.25rem;
+  animation: slideUp 0.6s 0.45s cubic-bezier(0.16,1,0.3,1) both;
+}
+.sv-info-card {
+  border-radius: 16px;
+  padding: 1.2rem 1.4rem;
+  text-align: left;
+}
+.sv-card-green {
+  background: linear-gradient(135deg, rgba(52,211,153,.09), rgba(56,189,248,.07));
+  border: 1px solid rgba(52,211,153,.3);
+}
+.sv-card-purple {
+  background: linear-gradient(135deg, rgba(167,139,250,.09), rgba(124,58,237,.06));
+  border: 1px solid rgba(167,139,250,.28);
+}
+.sv-ic-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #34d399;
+  margin-bottom: .45rem;
+}
+.sv-card-purple .sv-ic-label { color: #c4b5fd; }
+.sv-ic-value {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+/* ── Privacy ── */
+.sv-privacy {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(167,139,250,.07);
+  border: 1px solid rgba(167,139,250,.22);
+  border-radius: 9999px;
+  padding: 9px 18px;
+  font-size: 0.82rem;
+  color: #c4b5fd;
+  margin-bottom: 1.5rem;
+  animation: slideUp 0.6s 0.5s cubic-bezier(0.16,1,0.3,1) both;
+  line-height: 1.4;
+}
+.sv-privacy svg { stroke: #c4b5fd; opacity: .8; flex-shrink: 0; }
+
+/* ── Blockchain receipt ── */
+.sv-receipt {
+  width: 100%;
+  background: transparent;
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  margin-bottom: 2rem;
+  animation: slideUp 0.6s 0.55s cubic-bezier(0.16,1,0.3,1) both;
+  overflow: hidden;
+  transition: border-color .25s;
+}
+.sv-receipt[open] { border-color: rgba(124,58,237,.4); }
+.sv-receipt summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: .9rem 1.2rem;
+  font-size: .82rem;
+  font-weight: 700;
+  color: #94a3b8;
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: .5px;
+  list-style: none;
+  transition: color .2s;
+}
+.sv-receipt summary::-webkit-details-marker { display: none; }
+.sv-receipt summary:hover { color: #fff; }
+.sv-receipt summary svg { opacity: .6; }
+.sv-chevron { margin-left: auto; transition: transform .3s; }
+.sv-receipt[open] .sv-chevron { transform: rotate(180deg); }
+.sv-receipt-body {
+  padding: 1rem 1.2rem 1.2rem;
+  border-top: 1px solid rgba(255,255,255,.06);
+  text-align: left;
+}
+.sv-hash-label {
+  font-size: .68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: .5rem;
+}
+.sv-hash-value {
+  font-family: 'Courier New', monospace;
+  font-size: .72rem;
+  color: #a78bfa;
+  word-break: break-all;
+  line-height: 1.55;
+  background: rgba(124,58,237,.06);
+  border: 1px solid rgba(124,58,237,.18);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+.sv-hash-note {
+  font-size: .75rem;
+  color: var(--text-muted);
+  margin-top: .75rem;
+  line-height: 1.5;
+}
+
+/* ── Action buttons ── */
+.sv-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  animation: slideUp 0.6s 0.6s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* ── Shared animations ── */
 @keyframes popIn {
-    from { transform: scale(0.4); opacity: 0; }
-    to   { transform: scale(1);   opacity: 1; }
-}
-
-/* ── Headline ── */
-.vs-headline {
-    font-family: var(--font-family);
-    font-size: clamp(2rem, 5vw, 2.75rem);
-    font-weight: 800;
-    color: #ffffff;
-    letter-spacing: -0.02em;
-    line-height: 1.2;
-    margin: 0 0 0.5rem;
-    animation: slideUp 0.6s 0.1s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-.vs-tagline {
-    font-size: 1.05rem;
-    color: var(--text-secondary);
-    margin: 0 0 2rem;
-    line-height: 1.5;
-    animation: slideUp 0.6s 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  from { transform: scale(0.4); opacity: 0; }
+  to   { transform: scale(1);   opacity: 1; }
 }
 @keyframes slideUp {
-    from { opacity: 0; transform: translateY(18px); }
-    to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Timestamp card ── */
-.vs-timestamp-card {
-    width: 100%;
-    background: linear-gradient(135deg, rgba(52, 211, 153, 0.08), rgba(56, 189, 248, 0.07));
-    border: 1px solid rgba(52, 211, 153, 0.3);
-    border-radius: 18px;
-    padding: 1.4rem 1.6rem;
-    margin-bottom: 1.25rem;
-    animation: slideUp 0.6s 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
-    box-shadow: 0 0 30px rgba(52, 211, 153, 0.1), inset 0 1px 0 rgba(255,255,255,0.05);
-}
-.vs-ts-label {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.68rem;
-    font-weight: 800;
-    text-transform: uppercase;
-    letter-spacing: 2px;
-    color: #34d399;
-    margin-bottom: 0.55rem;
-}
-.vs-ts-value {
-    font-size: 1.12rem;
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.01em;
-    line-height: 1.3;
-    text-shadow: 0 0 20px rgba(52, 211, 153, 0.4);
+/* ── Responsive ── */
+@media (max-width: 480px) {
+  .sv-cards-row { grid-template-columns: 1fr; }
 }
 
-/* ── Privacy notice ── */
-.vs-privacy-note {
-    display: inline-flex;
-    align-items: center;
-    gap: 9px;
-    background: rgba(167, 139, 250, 0.07);
-    border: 1px solid rgba(167, 139, 250, 0.22);
-    border-radius: 9999px;
-    padding: 9px 18px;
-    font-size: 0.82rem;
-    color: #c4b5fd;
-    margin-bottom: 1.5rem;
-    animation: slideUp 0.6s 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
-    line-height: 1.4;
+/* ── Certificate email status pill ── */
+.sv-cert-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: .85rem;
+  border-radius: 9999px;
+  padding: 8px 18px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  transition: background .4s, border-color .4s, color .4s;
 }
-.vs-privacy-note svg { flex-shrink: 0; stroke: #c4b5fd; opacity: 0.8; }
-
-/* ── Blockchain receipt (collapsible) ── */
-.vs-receipt {
-    width: 100%;
-    background: transparent;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 14px;
-    margin-bottom: 2rem;
-    animation: slideUp 0.6s 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
-    overflow: hidden;
-    transition: border-color 0.25s ease;
+.sv-cert-sending {
+  background: rgba(56,189,248,.08);
+  border: 1px solid rgba(56,189,248,.3);
+  color: #7dd3fc;
 }
-.vs-receipt[open] { border-color: rgba(124, 58, 237, 0.4); }
-
-.vs-receipt summary {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 0.9rem 1.2rem;
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: #94a3b8;
-    cursor: pointer;
-    user-select: none;
-    letter-spacing: 0.5px;
-    list-style: none;
-    transition: color 0.2s;
+.sv-cert-ok {
+  background: rgba(52,211,153,.10);
+  border: 1px solid rgba(52,211,153,.35);
+  color: #6ee7b7;
 }
-.vs-receipt summary::-webkit-details-marker { display: none; }
-.vs-receipt summary:hover { color: #ffffff; }
-.vs-receipt summary svg { opacity: 0.6; }
-.vs-chevron {
-    margin-left: auto;
-    transition: transform 0.3s ease;
+.sv-cert-err {
+  background: rgba(251,113,133,.08);
+  border: 1px solid rgba(251,113,133,.3);
+  color: #fca5a5;
 }
-.vs-receipt[open] .vs-chevron { transform: rotate(180deg); }
-
-.vs-receipt-body {
-    padding: 0 1.2rem 1.2rem;
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
-    padding-top: 1rem;
-    text-align: left;
+/* Spinner shown only while sending */
+.sv-cert-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(125,211,252,.3);
+  border-top-color: #38bdf8;
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  flex-shrink: 0;
 }
-.vs-hash-label {
-    font-size: 0.68rem;
-    font-weight: 700;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 1.5px;
-    margin-bottom: 0.5rem;
-}
-.vs-hash-value {
-    font-family: 'Courier New', monospace;
-    font-size: 0.72rem;
-    color: #a78bfa;
-    word-break: break-all;
-    line-height: 1.55;
-    background: rgba(124, 58, 237, 0.06);
-    border: 1px solid rgba(124, 58, 237, 0.18);
-    border-radius: 8px;
-    padding: 10px 12px;
-}
-.vs-hash-note {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 0.75rem;
-    line-height: 1.5;
-}
-
-/* ── Actions ── */
-.vs-actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    justify-content: center;
-    animation: slideUp 0.6s 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
-}
+.sv-cert-ok  .sv-cert-spinner,
+.sv-cert-err .sv-cert-spinner { display: none; }
+@keyframes spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}

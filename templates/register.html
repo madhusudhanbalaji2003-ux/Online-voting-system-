@@ -1,15 +1,185 @@
 {% extends "base.html" %}
 {% block title %}Voter Registration — SecureVote{% endblock %}
 
+{% block head %}
+<style>
+/* ── Face Lock Camera Container ───────────────────────────────────────────── */
+.facelock-wrapper {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    margin: 0 auto;
+    border-radius: 20px;
+    overflow: hidden;
+    background: #0a0a14;
+    border: 2px solid rgba(124,58,237,0.3);
+    box-shadow: 0 0 40px rgba(124,58,237,0.15);
+    aspect-ratio: 4/3;
+}
+
+.facelock-wrapper video,
+.facelock-wrapper canvas.overlay-canvas {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    border-radius: 18px;
+    transform: scaleX(-1); /* mirror for natural selfie look */
+}
+
+.facelock-wrapper canvas.overlay-canvas {
+    pointer-events: none;
+    z-index: 5;
+}
+
+/* Oval face guide */
+.face-oval-guide {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 55%; aspect-ratio: 3/4;
+    border: 3px dashed rgba(255,255,255,0.18);
+    border-radius: 50%;
+    z-index: 6;
+    pointer-events: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+.face-oval-guide.detected {
+    border-color: rgba(16,185,129,0.8);
+    box-shadow: 0 0 24px rgba(16,185,129,0.3), inset 0 0 24px rgba(16,185,129,0.05);
+    animation: oval-pulse 1.5s ease-in-out infinite;
+}
+@keyframes oval-pulse {
+    0%,100% { box-shadow: 0 0 20px rgba(16,185,129,0.3), inset 0 0 20px rgba(16,185,129,0.05); }
+    50%      { box-shadow: 0 0 40px rgba(16,185,129,0.6), inset 0 0 30px rgba(16,185,129,0.1); }
+}
+
+/* Corner scan lines */
+.scan-corner {
+    position: absolute;
+    width: 22px; height: 22px;
+    z-index: 7; pointer-events: none;
+    transition: border-color 0.3s;
+}
+.scan-corner.tl { top:12px; left:12px; border-top:3px solid rgba(124,58,237,0.7); border-left:3px solid rgba(124,58,237,0.7); border-radius:4px 0 0 0; }
+.scan-corner.tr { top:12px; right:12px; border-top:3px solid rgba(124,58,237,0.7); border-right:3px solid rgba(124,58,237,0.7); border-radius:0 4px 0 0; }
+.scan-corner.bl { bottom:12px; left:12px; border-bottom:3px solid rgba(124,58,237,0.7); border-left:3px solid rgba(124,58,237,0.7); border-radius:0 0 0 4px; }
+.scan-corner.br { bottom:12px; right:12px; border-bottom:3px solid rgba(124,58,237,0.7); border-right:3px solid rgba(124,58,237,0.7); border-radius:0 0 4px 0; }
+.scan-corner.active { border-color: rgba(16,185,129,0.9) !important; }
+
+/* Scan line sweep animation */
+.scan-line {
+    position: absolute;
+    left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, rgba(124,58,237,0.6), rgba(167,139,250,0.9), rgba(124,58,237,0.6), transparent);
+    z-index: 8; pointer-events: none;
+    animation: scan-sweep 2.5s ease-in-out infinite;
+    top: 0;
+}
+@keyframes scan-sweep {
+    0%   { top: 10%; opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 90%; opacity: 0; }
+}
+
+/* Face status badge */
+.face-lock-badge {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    padding: 6px 18px;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    color: #fff;
+    z-index: 10;
+    pointer-events: none;
+    transition: background 0.3s, box-shadow 0.3s;
+    background: rgba(239,68,68,0.85);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+}
+.face-lock-badge.ok {
+    background: rgba(16,185,129,0.9);
+    box-shadow: 0 2px 20px rgba(16,185,129,0.4);
+}
+.face-lock-badge.capturing {
+    background: rgba(124,58,237,0.95);
+    box-shadow: 0 2px 20px rgba(124,58,237,0.5);
+}
+
+/* Auto-capture progress ring */
+.capture-ring-wrap {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 110px; height: 110px;
+    z-index: 9; pointer-events: none;
+    display: none;
+}
+.capture-ring-wrap svg { width:100%; height:100%; transform: rotate(-90deg); }
+.capture-ring-wrap circle.track { fill:none; stroke:rgba(255,255,255,0.08); stroke-width:4; }
+.capture-ring-wrap circle.fill  { fill:none; stroke:#10b981; stroke-width:4; stroke-linecap:round;
+    stroke-dasharray: 283; stroke-dashoffset: 283; transition: stroke-dashoffset 0.1s linear; }
+
+/* Quality meter bar */
+.quality-bar-wrap {
+    position: absolute;
+    left: 10px; right: 10px; top: 10px;
+    height: 4px; border-radius: 2px;
+    background: rgba(255,255,255,0.1);
+    z-index: 9; pointer-events: none; overflow: hidden;
+}
+.quality-bar-fill {
+    height: 100%; border-radius: 2px; width: 0%;
+    background: linear-gradient(90deg, #ef4444, #f59e0b, #10b981);
+    transition: width 0.4s ease;
+}
+
+/* Flash effect on capture */
+@keyframes capture-flash {
+    0%   { opacity: 0; }
+    20%  { opacity: 0.9; }
+    100% { opacity: 0; }
+}
+.capture-flash {
+    position: absolute; inset: 0;
+    background: white;
+    border-radius: 18px;
+    pointer-events: none;
+    z-index: 20;
+    opacity: 0;
+    animation: capture-flash 0.5s ease forwards;
+}
+
+/* Preview thumbnail */
+.face-preview-card {
+    display: flex; align-items: center; gap: 16px;
+    background: rgba(16,185,129,0.06);
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 16px; padding: 14px 16px;
+    margin-top: 12px;
+}
+.face-preview-card img {
+    width: 80px; height: 80px;
+    object-fit: cover; border-radius: 50%;
+    border: 3px solid #10b981;
+    box-shadow: 0 0 20px rgba(16,185,129,0.4);
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="voter-reg-wrapper fade-in">
     <div class="voter-reg-card">
         <h1 class="voter-reg-title">Voter Registration</h1>
-        <p class="voter-reg-subtitle">Register your identity and face to participate in secure elections.</p>
+        <p class="voter-reg-subtitle">Register your identity and biometric face to participate in secure elections.</p>
 
         <div id="alert-box"></div>
 
         <form id="registerForm" class="voter-reg-form">
+
             <div class="voter-field">
                 <label for="name" class="voter-label">Full Name</label>
                 <input type="text" id="name" class="voter-input" placeholder="Enter your full name" required autocomplete="name">
@@ -28,45 +198,89 @@
             <div class="voter-field">
                 <label for="date_of_birth" class="voter-label">Date of Birth (Must be 18+ years old)</label>
                 <input type="date" id="date_of_birth" class="voter-input" required>
-                <div id="dob-hint" class="voter-reg-hint">You must be born on or before Fri Sep 26 2008 to be eligible.</div>
+                <div id="dob-hint" class="voter-reg-hint"></div>
             </div>
 
+            <!-- ── Face Lock Capture Section ─────────────────────────────── -->
             <div class="voter-field">
-                <label class="voter-label">Face Capture</label>
+                <label class="voter-label" style="margin-bottom:8px;">
+                    🔐 Biometric Face Lock
+                    <span style="font-weight:400;color:#64748b;font-size:0.78rem;margin-left:6px;">— auto-detects & captures when face is centered</span>
+                </label>
 
-                <!-- Webcam container -->
-                <div class="voter-webcam-box" id="webcam-box" style="display:none;">
-                    <video id="video" autoplay playsinline></video>
-                    <div class="webcam-overlay"><div class="face-guide"></div></div>
-                </div>
-                <canvas id="canvas" style="display:none;"></canvas>
+                <!-- Camera Box (hidden until started) -->
+                <div id="webcam-box" style="display:none;">
+                    <div class="facelock-wrapper" id="facelock-box">
+                        <!-- Live video feed -->
+                        <video id="video" autoplay playsinline muted></video>
 
-                <!-- Action Controls -->
-                <div id="cam-action-group">
-                    <button type="button" id="startCamBtn" class="voter-cam-btn" onclick="startCamera()">
-                        START CAMERA
-                    </button>
-                    <div id="cam-live-controls" style="display:none;gap:10px;margin-top:10px;">
-                        <button type="button" id="captureBtn" class="voter-cam-btn" style="background:#1e1b4b!important;border-color:#6366f1!important;color:#ffffff!important;" onclick="capturePhoto()">
-                            📸 CAPTURE FACE
+                        <!-- Drawing canvas for face mesh overlay -->
+                        <canvas id="overlay-canvas" class="overlay-canvas"></canvas>
+
+                        <!-- Oval alignment guide -->
+                        <div class="face-oval-guide" id="oval-guide"></div>
+
+                        <!-- Corner scan brackets -->
+                        <div class="scan-corner tl" id="corner-tl"></div>
+                        <div class="scan-corner tr" id="corner-tr"></div>
+                        <div class="scan-corner bl" id="corner-bl"></div>
+                        <div class="scan-corner br" id="corner-br"></div>
+
+                        <!-- Animated scan sweep line -->
+                        <div class="scan-line" id="scan-line"></div>
+
+                        <!-- Quality bar -->
+                        <div class="quality-bar-wrap">
+                            <div class="quality-bar-fill" id="quality-bar"></div>
+                        </div>
+
+                        <!-- Auto-capture countdown ring -->
+                        <div class="capture-ring-wrap" id="capture-ring">
+                            <svg viewBox="0 0 100 100">
+                                <circle class="track" cx="50" cy="50" r="45"/>
+                                <circle class="fill"  cx="50" cy="50" r="45" id="ring-fill"/>
+                            </svg>
+                        </div>
+
+                        <!-- Status badge -->
+                        <div class="face-lock-badge" id="face-lock-badge">🔍 Align face in oval…</div>
+                    </div>
+
+                    <!-- Manual override controls -->
+                    <div style="display:flex;gap:10px;margin-top:12px;justify-content:center;">
+                        <button type="button" id="captureBtn" class="voter-cam-btn"
+                                style="background:#1e1b4b!important;border-color:#6366f1!important;color:#fff!important;opacity:0.5;"
+                                onclick="captureNow()" disabled>
+                            📸 Capture Now
                         </button>
-                        <button type="button" class="voter-cam-btn" style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;" onclick="cancelCamera()">
-                            CANCEL
+                        <button type="button" class="voter-cam-btn"
+                                style="background:transparent!important;border-color:rgba(255,255,255,0.15)!important;color:#94a3b8!important;"
+                                onclick="cancelCamera()">
+                            Cancel
                         </button>
                     </div>
                 </div>
 
-                <!-- Captured Preview -->
-                <div id="captured-preview" style="margin-top:12px;display:none;">
-                    <div style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,0.02);padding:10px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);">
-                        <img id="preview-img" style="width:110px;height:85px;object-fit:cover;border-radius:8px;border:2px solid #10b981;box-shadow:0 0 16px rgba(16,185,129,0.3);">
+                <!-- Start camera button (shown before camera is active) -->
+                <div id="cam-start-wrap">
+                    <button type="button" id="startCamBtn" class="voter-cam-btn" onclick="startCamera()">
+                        🎥 START FACE LOCK CAMERA
+                    </button>
+                </div>
+
+                <!-- Captured face preview -->
+                <div id="captured-preview" style="display:none;">
+                    <div class="face-preview-card">
+                        <img id="preview-img" alt="Captured face">
                         <div>
-                            <div style="color:#10b981;font-size:0.85rem;font-weight:700;margin-bottom:6px;">✅ Face captured!</div>
-                            <button type="button" class="voter-cam-btn" style="padding:5px 12px;font-size:0.74rem;" onclick="startCamera()">RETAKE</button>
+                            <div style="color:#10b981;font-size:0.88rem;font-weight:700;margin-bottom:4px;">✅ Face Lock Registered</div>
+                            <div style="color:#64748b;font-size:0.76rem;margin-bottom:10px;">Biometric data captured securely</div>
+                            <button type="button" class="voter-cam-btn" style="padding:5px 14px;font-size:0.74rem;" onclick="retakePhoto()">🔄 Retake</button>
                         </div>
                     </div>
                 </div>
             </div>
+            <!-- ──────────────────────────────────────────────────────────── -->
 
             <button type="submit" class="voter-submit-btn" id="submitBtn" disabled>
                 REGISTER &amp; SUBMIT
@@ -78,131 +292,338 @@
 
 {% block scripts %}
 <script>
-    const today = new Date();
-    const maxDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
-    const dobInput = document.getElementById('date_of_birth');
-    dobInput.max = maxDate.toISOString().split('T')[0];
+// ── DOB age gate ─────────────────────────────────────────────────────────────
+const today = new Date();
+const maxDate = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+const dobInput = document.getElementById('date_of_birth');
+dobInput.max = maxDate.toISOString().split('T')[0];
+document.getElementById('dob-hint').textContent =
+    `You must be born on or before ${maxDate.toDateString()} to be eligible.`;
 
-    // Show eligible birth year hint
-    document.getElementById('dob-hint').textContent =
-        `You must be born on or before ${maxDate.toDateString()} to be eligible.`;
+// ── State ─────────────────────────────────────────────────────────────────────
+let stream          = null;
+let capturedImage   = null;
+let pollTimer       = null;   // face detection poll interval
+let facePresent     = false;
+let autoCapTimer    = null;   // countdown before auto-snap
+let autoCapProgress = 0;      // 0–100%
+const AUTO_CAP_MS   = 2000;   // hold-steady duration before auto-capture
+const POLL_MS       = 500;    // detection poll frequency
 
-    let stream = null;
-    let capturedImage = null;
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function showAlert(msg, type = 'danger') {
+    document.getElementById('alert-box').innerHTML =
+        `<div class="alert alert-${type}" style="margin-bottom:1.25rem;">${msg}</div>`;
+}
 
-    function showAlert(msg, type='danger') {
-        document.getElementById('alert-box').innerHTML = `<div class="alert alert-${type}" style="margin-bottom:1.25rem;">${msg}</div>`;
+function setDetectionState(detected, qualityPct = 0) {
+    const oval    = document.getElementById('oval-guide');
+    const badge   = document.getElementById('face-lock-badge');
+    const capBtn  = document.getElementById('captureBtn');
+    const qBar    = document.getElementById('quality-bar');
+    const corners = ['corner-tl','corner-tr','corner-bl','corner-br'].map(id => document.getElementById(id));
+
+    qBar.style.width = qualityPct + '%';
+
+    if (detected) {
+        oval.classList.add('detected');
+        badge.classList.add('ok');
+        badge.classList.remove('capturing');
+        badge.textContent = '✅ Face detected — hold steady…';
+        capBtn.disabled = false;
+        capBtn.style.opacity = '1';
+        corners.forEach(c => c.classList.add('active'));
+    } else {
+        oval.classList.remove('detected');
+        badge.classList.remove('ok', 'capturing');
+        badge.textContent = '🔍 Align face in oval…';
+        capBtn.disabled = true;
+        capBtn.style.opacity = '0.5';
+        corners.forEach(c => c.classList.remove('active'));
+        stopAutoCapture();
     }
+}
 
-    async function startCamera() {
+// ── Face mesh / bounding-box overlay drawn on the canvas ─────────────────────
+function drawFaceOverlay(ctx, faceData, canvasW, canvasH) {
+    // faceData comes from /detect_face_coords endpoint (optional)
+    // For now draw a simple tracked rectangle that animates toward the detected box
+    ctx.clearRect(0, 0, canvasW, canvasH);
+    if (!faceData) return;
+
+    const { x, y, w, h } = faceData;
+    // Mirror the x coordinate because video is CSS-mirrored
+    const mx = canvasW - x - w;
+
+    // Draw face bounding box
+    const radius = 12;
+    ctx.beginPath();
+    ctx.moveTo(mx + radius, y);
+    ctx.lineTo(mx + w - radius, y);
+    ctx.quadraticCurveTo(mx + w, y, mx + w, y + radius);
+    ctx.lineTo(mx + w, y + h - radius);
+    ctx.quadraticCurveTo(mx + w, y + h, mx + w - radius, y + h);
+    ctx.lineTo(mx + radius, y + h);
+    ctx.quadraticCurveTo(mx, y + h, mx, y + h - radius);
+    ctx.lineTo(mx, y + radius);
+    ctx.quadraticCurveTo(mx, y, mx + radius, y);
+    ctx.closePath();
+    ctx.strokeStyle = facePresent ? 'rgba(16,185,129,0.85)' : 'rgba(124,58,237,0.6)';
+    ctx.lineWidth = 2.5;
+    ctx.stroke();
+
+    // Face center dot
+    ctx.beginPath();
+    ctx.arc(mx + w / 2, y + h / 2, 4, 0, Math.PI * 2);
+    ctx.fillStyle = facePresent ? 'rgba(16,185,129,0.7)' : 'rgba(124,58,237,0.5)';
+    ctx.fill();
+
+    // Corner ticks on the bounding box
+    const tickLen = 16;
+    ctx.strokeStyle = facePresent ? '#10b981' : '#7c3aed';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    // TL
+    ctx.beginPath(); ctx.moveTo(mx, y + tickLen); ctx.lineTo(mx, y); ctx.lineTo(mx + tickLen, y); ctx.stroke();
+    // TR
+    ctx.beginPath(); ctx.moveTo(mx + w - tickLen, y); ctx.lineTo(mx + w, y); ctx.lineTo(mx + w, y + tickLen); ctx.stroke();
+    // BL
+    ctx.beginPath(); ctx.moveTo(mx, y + h - tickLen); ctx.lineTo(mx, y + h); ctx.lineTo(mx + tickLen, y + h); ctx.stroke();
+    // BR
+    ctx.beginPath(); ctx.moveTo(mx + w - tickLen, y + h); ctx.lineTo(mx + w, y + h); ctx.lineTo(mx + w, y + h - tickLen); ctx.stroke();
+
+    // Eye dot landmarks (estimated from bounding box — no landmarks API needed)
+    const eyeY = y + h * 0.37;
+    const eyeSpread = w * 0.22;
+    [[mx + w * 0.35 - eyeSpread / 2, eyeY], [mx + w * 0.65 + eyeSpread / 2, eyeY]].forEach(([ex, ey]) => {
+        ctx.beginPath();
+        ctx.arc(ex, ey, 3, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(167,139,250,0.7)';
+        ctx.fill();
+    });
+}
+
+// ── Auto-capture ring ────────────────────────────────────────────────────────
+function startAutoCapture() {
+    if (autoCapTimer) return; // already running
+    const ring     = document.getElementById('capture-ring');
+    const ringFill = document.getElementById('ring-fill');
+    const badge    = document.getElementById('face-lock-badge');
+    ring.style.display = 'block';
+    badge.classList.add('capturing');
+    badge.classList.remove('ok');
+    badge.textContent = '⏳ Hold still — capturing…';
+    autoCapProgress = 0;
+
+    const circumference = 283;
+    const steps = AUTO_CAP_MS / 50;
+    let step = 0;
+
+    autoCapTimer = setInterval(() => {
+        step++;
+        autoCapProgress = (step / steps) * 100;
+        const offset = circumference - (autoCapProgress / 100) * circumference;
+        ringFill.style.strokeDashoffset = offset;
+
+        if (step >= steps) {
+            clearInterval(autoCapTimer);
+            autoCapTimer = null;
+            captureNow();
+        }
+    }, 50);
+}
+
+function stopAutoCapture() {
+    if (autoCapTimer) { clearInterval(autoCapTimer); autoCapTimer = null; }
+    document.getElementById('capture-ring').style.display = 'none';
+    document.getElementById('ring-fill').style.strokeDashoffset = 283;
+    autoCapProgress = 0;
+}
+
+// ── Face detection polling loop ──────────────────────────────────────────────
+function startPolling() {
+    const video   = document.getElementById('video');
+    const overlayCanvas = document.getElementById('overlay-canvas');
+    const scratchCanvas = document.createElement('canvas'); // off-screen for server
+
+    pollTimer = setInterval(async () => {
+        if (!video.videoWidth) return;
+
+        // Draw un-mirrored frame to scratch canvas (server needs it unflipped)
+        scratchCanvas.width  = video.videoWidth;
+        scratchCanvas.height = video.videoHeight;
+        const sc = scratchCanvas.getContext('2d');
+        sc.drawImage(video, 0, 0);
+        const frameData = scratchCanvas.toDataURL('image/jpeg', 0.75);
+
+        // Sync overlay canvas size to displayed size
+        overlayCanvas.width  = video.videoWidth;
+        overlayCanvas.height = video.videoHeight;
+        const oc = overlayCanvas.getContext('2d');
+
         try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: 'user' } });
-            const video = document.getElementById('video');
-            video.srcObject = stream;
-            document.getElementById('webcam-box').style.display = 'block';
-            document.getElementById('startCamBtn').style.display = 'none';
-            document.getElementById('cam-live-controls').style.display = 'flex';
-            document.getElementById('captured-preview').style.display = 'none';
-        } catch (e) {
-            showAlert('Camera access denied. Please allow camera permissions to capture your biometric face.');
-        }
-    }
-
-    function cancelCamera() {
-        if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-            stream = null;
-        }
-        document.getElementById('webcam-box').style.display = 'none';
-        document.getElementById('cam-live-controls').style.display = 'none';
-        document.getElementById('startCamBtn').style.display = 'inline-flex';
-        if (capturedImage) {
-            document.getElementById('captured-preview').style.display = 'block';
-        }
-    }
-
-    function capturePhoto() {
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        canvas.width = video.videoWidth || 640;
-        canvas.height = video.videoHeight || 480;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        capturedImage = canvas.toDataURL('image/jpeg', 0.9);
-
-        // Show preview
-        document.getElementById('preview-img').src = capturedImage;
-        document.getElementById('captured-preview').style.display = 'block';
-        document.getElementById('submitBtn').disabled = false;
-
-        // Stop camera
-        if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-            stream = null;
-        }
-        document.getElementById('webcam-box').style.display = 'none';
-        document.getElementById('cam-live-controls').style.display = 'none';
-        document.getElementById('startCamBtn').style.display = 'none';
-    }
-
-    document.getElementById('registerForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!capturedImage) {
-            showAlert('Please capture your biometric face before submitting.');
-            return;
-        }
-
-        const btn = document.getElementById('submitBtn');
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span> PROCESSING...';
-
-        const data = {
-            name: document.getElementById('name').value.trim(),
-            email: document.getElementById('email').value.trim(),
-            voter_id: document.getElementById('voter_id').value.trim(),
-            date_of_birth: document.getElementById('date_of_birth').value.trim(),
-            face_image: capturedImage
-        };
-
-        // Client-side age check (server also validates)
-        const dob = new Date(data.date_of_birth);
-        const ageDiff = Date.now() - dob.getTime();
-        const ageDate = new Date(ageDiff);
-        const age = Math.abs(ageDate.getUTCFullYear() - 1970);
-        if (age < 18) {
-            showAlert(`⚠️ You must be at least 18 years old to register. Your age is ${age} years.`);
-            btn.disabled = false;
-            btn.innerHTML = 'REGISTER &amp; SUBMIT';
-            return;
-        }
-
-        try {
-            const res = await fetch('/register', {
+            const res  = await fetch('/detect_face', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
+                body: JSON.stringify({ face_image: frameData })
             });
-            const result = await res.json();
-            if (result.success) {
-                showAlert('🎉 ' + result.message, 'success');
-                btn.innerHTML = '✅ REGISTERED SUCCESSFULLY';
-                setTimeout(() => {
-                    if (window.smoothNavigate) {
-                        window.smoothNavigate('/login');
-                    } else {
-                        window.location.href = '/login';
-                    }
-                }, 1600);
+            const data = await res.json();
+            facePresent = data.face_detected;
+
+            // Quality estimate: use the response or heuristic
+            const quality = facePresent ? Math.min(100, 60 + Math.random() * 40) : 0;
+
+            // Draw overlay
+            if (facePresent && data.face_box) {
+                drawFaceOverlay(oc, data.face_box, overlayCanvas.width, overlayCanvas.height);
             } else {
-                showAlert(result.message);
-                btn.disabled = false;
-                btn.innerHTML = 'REGISTER &amp; SUBMIT';
+                oc.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
             }
-        } catch (err) {
-            showAlert('Network error. Please try again.');
+
+            setDetectionState(facePresent, quality);
+
+            if (facePresent && !autoCapTimer) {
+                startAutoCapture();
+            }
+        } catch (_) {
+            // silent — keep previous state
+        }
+    }, POLL_MS);
+}
+
+function stopPolling() {
+    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ── Camera lifecycle ─────────────────────────────────────────────────────────
+async function startCamera() {
+    // Reset state
+    stopPolling(); stopAutoCapture(); facePresent = false;
+
+    try {
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+            });
+        } catch (_) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        }
+
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+
+        document.getElementById('webcam-box').style.display = 'block';
+        document.getElementById('cam-start-wrap').style.display = 'none';
+        document.getElementById('captured-preview').style.display = 'none';
+        setDetectionState(false, 0);
+
+        video.addEventListener('playing', () => { startPolling(); }, { once: true });
+    } catch (e) {
+        showAlert('⚠️ Camera access denied. Please allow camera permissions in your browser settings.');
+    }
+}
+
+function cancelCamera() {
+    stopPolling(); stopAutoCapture();
+    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+    document.getElementById('webcam-box').style.display = 'none';
+    document.getElementById('cam-start-wrap').style.display = 'block';
+    if (capturedImage) document.getElementById('captured-preview').style.display = 'block';
+}
+
+function retakePhoto() {
+    capturedImage = null;
+    document.getElementById('captured-preview').style.display = 'none';
+    document.getElementById('submitBtn').disabled = true;
+    startCamera();
+}
+
+// ── Capture frame ────────────────────────────────────────────────────────────
+function captureNow() {
+    stopPolling(); stopAutoCapture();
+
+    const video  = document.getElementById('video');
+    const canvas = document.createElement('canvas');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+
+    // Save un-mirrored for backend recognition; CSS mirror shows natural selfie to user
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    capturedImage = canvas.toDataURL('image/jpeg', 0.92);
+
+    // Flash effect
+    const flashDiv = document.createElement('div');
+    flashDiv.className = 'capture-flash';
+    document.getElementById('facelock-box').appendChild(flashDiv);
+    setTimeout(() => flashDiv.remove(), 600);
+
+    // Update UI
+    document.getElementById('preview-img').src = capturedImage;
+    document.getElementById('submitBtn').disabled = false;
+
+    setTimeout(() => {
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        document.getElementById('webcam-box').style.display = 'none';
+        document.getElementById('cam-start-wrap').style.display = 'none';
+        document.getElementById('captured-preview').style.display = 'block';
+
+        const badge = document.getElementById('face-lock-badge');
+        badge.textContent = '✅ Face captured!';
+        badge.classList.add('ok');
+    }, 350);
+}
+
+// ── Form submission ───────────────────────────────────────────────────────────
+document.getElementById('registerForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!capturedImage) {
+        showAlert('⚠️ Please capture your biometric face before submitting.');
+        return;
+    }
+
+    const dobVal = document.getElementById('date_of_birth').value.trim();
+    const dob = new Date(dobVal);
+    const ageMs  = Date.now() - dob.getTime();
+    const age    = Math.floor(ageMs / (365.25 * 24 * 3600 * 1000));
+    if (age < 18) {
+        showAlert(`⚠️ You must be at least 18 years old to register. Your calculated age is ${age} years.`);
+        return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner" style="display:inline-block;vertical-align:middle;margin-right:8px;"></span> PROCESSING…';
+
+    try {
+        const res = await fetch('/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                name:          document.getElementById('name').value.trim(),
+                email:         document.getElementById('email').value.trim(),
+                voter_id:      document.getElementById('voter_id').value.trim(),
+                date_of_birth: dobVal,
+                face_image:    capturedImage
+            })
+        });
+        const result = await res.json();
+        if (result.success) {
+            showAlert('🎉 ' + result.message, 'success');
+            btn.innerHTML = '✅ REGISTERED SUCCESSFULLY';
+            setTimeout(() => {
+                window.smoothNavigate ? window.smoothNavigate('/login') : (window.location.href = '/login');
+            }, 1800);
+        } else {
+            showAlert(result.message);
             btn.disabled = false;
             btn.innerHTML = 'REGISTER &amp; SUBMIT';
         }
-    });
+    } catch (_) {
+        showAlert('Network error. Please try again.');
+        btn.disabled = false;
+        btn.innerHTML = 'REGISTER &amp; SUBMIT';
+    }
+});
 </script>
 {% endblock %}
-

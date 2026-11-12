@@ -1,248 +1,375 @@
 """
 Face Recognition and Liveness Detection utilities for SecureVote.
-Uses face_recognition library for face matching and
-MediaPipe Face Mesh for blink-based liveness detection.
+
+Engine      : OpenCV YuNet (threshold=0.1) with automatic Haar Cascade fallback.
+              Multiple lighting & orientation variants tried: original, flip, CLAHE, gamma.
+Recognition : OpenCV SFace — 128-d embedding. Uses alignCrop (5 facial landmarks)
+              with automatic robust padded manual crop fallback.
+Liveness    : Face-centre spatial variance across short video frames.
+Hardware    : Fully optimized for laptop webcams and phone front-facing cameras.
+
+No MediaPipe dependency.
 """
 
 import base64
 import io
 import os
 import pickle
+import threading
 import urllib.request
 
 import cv2
 import numpy as np
 from PIL import Image
 
-# Thresholds
-FACE_MATCH_TOLERANCE = 1.128  # SFace L2 distance threshold
-EAR_THRESHOLD = 0.21
-BLINK_CONSEC_FRAMES = 2
+# ── Constants ─────────────────────────────────────────────────────────────────
+FACE_MATCH_TOLERANCE = 1.128   # kept for backward compat
+EAR_THRESHOLD        = 0.21
+BLINK_CONSEC_FRAMES  = 2
+_MATCH_THRESHOLD     = 0.363   # SFace cosine-similarity — verification
+_DUP_THRESHOLD       = 0.363   # SFace cosine-similarity — duplicate check
 
-# OpenCV Face Recognition Models Setup
-YUNET_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx"
-SFACE_URL = "https://github.com/opencv/opencv_zoo/raw/main/models/face_recognition_sface/face_recognition_sface_2021dec.onnx"
-
+# ── Model paths ───────────────────────────────────────────────────────────────
 YUNET_PATH = os.path.join(os.path.dirname(__file__), "face_detection_yunet.onnx")
 SFACE_PATH = os.path.join(os.path.dirname(__file__), "face_recognition_sface.onnx")
 
-def download_model(url, path):
-    if not os.path.exists(path):
-        print(f"Downloading {os.path.basename(path)}... This may take a moment.")
-        urllib.request.urlretrieve(url, path)
-        print("Download complete.")
+# ── Thread lock — cv2.FaceDetectorYN, CascadeClassifier & SFace are NOT thread-safe
+_det_lock = threading.Lock()
 
-download_model(YUNET_URL, YUNET_PATH)
-download_model(SFACE_URL, SFACE_PATH)
-
+# ── YuNet detector (primary) ──────────────────────────────────────────────────
+_yunet: "cv2.FaceDetectorYN | None" = None
 try:
-    detector = cv2.FaceDetectorYN.create(YUNET_PATH, "", (320, 320))
-    recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
-except Exception as e:
-    print(f"Error loading OpenCV Face models: {e}")
-    detector = None
-    recognizer = None
+    if os.path.exists(YUNET_PATH):
+        _yunet = cv2.FaceDetectorYN.create(
+            YUNET_PATH, "", (320, 320),
+            0.1,   # scoreThreshold (permissive for laptop/phone camera lighting)
+            0.3,   # nmsThreshold
+            5000   # topK
+        )
+        print("[face_utils] YuNet detector loaded (threshold=0.1).")
+    else:
+        print("[face_utils] WARNING: face_detection_yunet.onnx not found.")
+except Exception as _e:
+    print(f"[face_utils] YuNet load failed ({_e}) — using Haar Cascade fallback.")
+
+# ── Haar Cascade (fallback) ───────────────────────────────────────────────────
+_haar_xml = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+_haar: "cv2.CascadeClassifier" = cv2.CascadeClassifier(_haar_xml)
+if _haar.empty():
+    print("[face_utils] WARNING: Haar Cascade could not be loaded.")
+else:
+    print("[face_utils] Haar Cascade fallback ready.")
+
+# ── SFace recognizer (128-d face embedding) ───────────────────────────────────
+recognizer: "cv2.FaceRecognizerSF | None" = None
+try:
+    if os.path.exists(SFACE_PATH):
+        recognizer = cv2.FaceRecognizerSF.create(SFACE_PATH, "")
+        print("[face_utils] SFace recognizer loaded successfully.")
+    else:
+        print("[face_utils] WARNING: face_recognition_sface.onnx not found.")
+except Exception as _e:
+    print(f"[face_utils] SFace recognizer load failed: {_e}")
+
+# Legacy alias
+detector = _yunet
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Image decoding & normalization
+# ─────────────────────────────────────────────────────────────────────────────
 
-def decode_base64_image(base64_string):
-    """Decode a base64-encoded image string to a numpy array."""
+def decode_base64_image(b64: str):
+    """Base64 data-URL or raw string → uint8 RGB numpy array (or None)."""
     try:
-        # Remove data URL prefix if present
-        if "," in base64_string:
-            base64_string = base64_string.split(",")[1]
-
-        image_data = base64.b64decode(base64_string)
-        image = Image.open(io.BytesIO(image_data)).convert("RGB")
-        return np.array(image)
-    except Exception as e:
-        print(f"Error decoding image: {e}")
-        return None
-
-
-def get_face_encoding(image_array):
-    """
-    Extract face encoding from an image array.
-    Returns the encoding or None if no face is found.
-    """
-    if detector is None or recognizer is None:
-        print("Face models are not loaded.")
-        return None
-
-    try:
-        # Convert RGB (from PIL) to BGR for OpenCV
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-            bgr_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-        else:
-            bgr_image = image_array
-
-        h, w = bgr_image.shape[:2]
-        detector.setInputSize((w, h))
-        
-        status, faces = detector.detect(bgr_image)
-        if faces is None or len(faces) == 0:
+        if not b64:
             return None
-            
-        # Get the first face
-        face = faces[0]
-        
-        # Align face and extract features
-        aligned_face = recognizer.alignCrop(bgr_image, face)
-        feature = recognizer.feature(aligned_face)
-        return feature
-    except Exception as e:
-        print(f"Error getting face encoding: {e}")
+        if "," in b64:
+            b64 = b64.split(",", 1)[1]
+        data = base64.b64decode(b64)
+        image = Image.open(io.BytesIO(data)).convert("RGB")
+        return np.array(image, dtype=np.uint8)
+    except Exception as exc:
+        print(f"[face_utils] decode_base64_image error: {exc}")
         return None
 
 
-def compare_faces(known_encoding, test_image_array):
-    """
-    Compare a known face encoding with a test image.
-    Returns (match: bool, distance: float).
-    """
-    try:
-        test_encoding = get_face_encoding(test_image_array)
-        if test_encoding is None:
-            return False, 1.0
+def _to_rgb(arr: np.ndarray) -> np.ndarray:
+    """Ensure array is uint8 RGB H×W×3."""
+    if arr.dtype != np.uint8:
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+    if arr.ndim == 2:
+        return cv2.cvtColor(arr, cv2.COLOR_GRAY2RGB)
+    if arr.shape[2] == 4:
+        return cv2.cvtColor(arr, cv2.COLOR_RGBA2RGB)
+    return arr.copy()
 
-        # Calculate Cosine Similarity (higher is better, threshold >= 0.363)
-        # Using 0 (cv2.FaceRecognizerSF_FR_COSINE) to compute cosine similarity
-        similarity = recognizer.match(known_encoding, test_encoding, 0)
-        match = similarity >= 0.363
-        
-        # Convert similarity (-1 to 1) to distance (0 to 1) for the app.py logic
-        # app.py uses: confidence = max(0, (1 - distance) * 100)
-        # So we want distance to be small when similarity is high.
-        # Let's return a pseudo-distance: 1.0 - max(0, similarity)
-        pseudo_distance = 1.0 - max(0.0, float(similarity))
-        
-        return match, pseudo_distance
-    except Exception as e:
-        print(f"Error comparing faces: {e}")
+
+def _make_variants(rgb: np.ndarray):
+    """
+    Yield BGR image variants to handle diverse cameras (laptop/mobile)
+    and varying lighting conditions (backlit, dim, low-contrast).
+    """
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+
+    # 1. Original BGR
+    yield bgr
+
+    # 2. Horizontal flip (handles mirrored front-camera outputs)
+    yield cv2.flip(bgr, 1)
+
+    # 3. CLAHE contrast enhancement on LAB Lightness (helps dim rooms)
+    try:
+        lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+        l, a, b = cv2.split(lab)
+        clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+        cl = clahe.apply(l)
+        clahe_bgr = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2BGR)
+        yield clahe_bgr
+    except Exception:
+        pass
+
+    # 4. Gamma brightened (lifts dark shadows)
+    try:
+        lut = np.array([min(255, int(((i / 255.0) ** 0.6) * 255)) for i in range(256)], dtype=np.uint8)
+        yield cv2.LUT(bgr, lut)
+    except Exception:
+        pass
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Detection helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _yunet_detect(bgr: np.ndarray):
+    """Run YuNet on a BGR image. Returns highest-scoring face row (15 floats) or None."""
+    if _yunet is None:
+        return None
+    try:
+        h, w = bgr.shape[:2]
+        with _det_lock:
+            _yunet.setInputSize((w, h))
+            _, faces = _yunet.detect(bgr)
+        if faces is not None and len(faces) > 0:
+            return max(faces, key=lambda f: float(f[14]))
+    except Exception as exc:
+        print(f"[face_utils] _yunet_detect: {exc}")
+    return None
+
+
+def _haar_to_yunet_row(x: int, y: int, w: int, h: int) -> np.ndarray:
+    """Convert Haar Cascade bounding box to 15-float YuNet format."""
+    return np.array([
+        float(x), float(y), float(w), float(h),
+        float(x + w * 0.30), float(y + h * 0.37),  # right eye
+        float(x + w * 0.70), float(y + h * 0.37),  # left eye
+        float(x + w * 0.50), float(y + h * 0.60),  # nose tip
+        float(x + w * 0.37), float(y + h * 0.78),  # right mouth corner
+        float(x + w * 0.63), float(y + h * 0.78),  # left mouth corner
+        0.80                                       # confidence score
+    ], dtype=np.float32)
+
+
+def _haar_detect(bgr: np.ndarray):
+    """Run Haar Cascade fallback on histogram-equalised grayscale."""
+    if _haar.empty():
+        return None
+    try:
+        gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+        gray_eq = cv2.equalizeHist(gray)
+        with _det_lock:
+            faces = _haar.detectMultiScale(
+                gray_eq,
+                scaleFactor=1.08,
+                minNeighbors=3,
+                minSize=(30, 30),
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+        if len(faces) == 0:
+            return None
+        x, y, w, h = max(faces, key=lambda f: int(f[2]) * int(f[3]))
+        return _haar_to_yunet_row(int(x), int(y), int(w), int(h))
+    except Exception as exc:
+        print(f"[face_utils] _haar_detect: {exc}")
+    return None
+
+
+def detect_face_core(image_array: np.ndarray):
+    """
+    Detect the most prominent human face across camera variants.
+    Returns (bgr_image, face_row) or (None, None).
+    """
+    if image_array is None:
+        return None, None
+
+    rgb = _to_rgb(image_array)
+
+    for bgr in _make_variants(rgb):
+        # 1. Primary: YuNet
+        face = _yunet_detect(bgr)
+        if face is not None:
+            return bgr, face
+
+        # 2. Fallback: Haar Cascade
+        face = _haar_detect(bgr)
+        if face is not None:
+            return bgr, face
+
+    return None, None
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public API
+# ─────────────────────────────────────────────────────────────────────────────
+
+def get_face_encoding(image_array: np.ndarray):
+    """
+    Detect a face and extract a 128-d SFace embedding.
+    Works reliably on laptop webcams and phone front-facing cameras.
+    """
+    if recognizer is None:
+        print("[face_utils] SFace recognizer not loaded.")
+        return None
+
+    bgr_img, face_row = detect_face_core(image_array)
+    if face_row is None:
+        print("[face_utils] get_face_encoding: no face detected in image.")
+        return None
+
+    with _det_lock:
+        face_row_f32 = np.ascontiguousarray(face_row, dtype=np.float32).reshape(-1)
+
+        # 1️⃣ Try SFace alignCrop (using facial landmarks)
+        try:
+            aligned = recognizer.alignCrop(bgr_img, face_row_f32)
+            if aligned is not None and aligned.size > 0:
+                feat = recognizer.feature(aligned)
+                if feat is not None:
+                    return feat
+        except Exception as exc:
+            print(f"[face_utils] alignCrop fallback: {exc}")
+
+        # 2️⃣ Robust padded manual crop fallback (resized to 112×112)
+        try:
+            x, y, w, h = [max(0, int(v)) for v in face_row[:4]]
+            pad_w = int(w * 0.15)
+            pad_h = int(h * 0.15)
+            img_h, img_w = bgr_img.shape[:2]
+            x1 = max(0, x - pad_w)
+            y1 = max(0, y - pad_h)
+            x2 = min(img_w, x + w + pad_w)
+            y2 = min(img_h, y + h + pad_h)
+            crop = bgr_img[y1:y2, x1:x2]
+            if crop.size > 0:
+                resized_crop = cv2.resize(crop, (112, 112), interpolation=cv2.INTER_LINEAR)
+                resized_crop = np.ascontiguousarray(resized_crop, dtype=np.uint8)
+                feat = recognizer.feature(resized_crop)
+                if feat is not None:
+                    return feat
+        except Exception as exc2:
+            print(f"[face_utils] manual crop feature extraction failed: {exc2}")
+
+    return None
+
+
+def detect_face_in_frame(image_array: np.ndarray):
+    """
+    Quick human presence check for the live camera polling badge.
+    Returns (face_detected: bool, center: tuple | None).
+    """
+    _, face_row = detect_face_core(image_array)
+    if face_row is None:
+        return False, None
+    x, y, w, h = face_row[:4]
+    return True, (float(x + w / 2), float(y + h / 2))
+
+
+def compare_faces(known_encoding, test_image_array: np.ndarray):
+    """
+    Compare a stored face encoding against a live captured image.
+    Returns (match: bool, pseudo_distance: float).
+    """
+    if recognizer is None:
+        return False, 1.0
+    try:
+        test_enc = get_face_encoding(test_image_array)
+        if test_enc is None:
+            return False, 1.0
+        with _det_lock:
+            sim = float(recognizer.match(known_encoding, test_enc, 0))
+        dist = 1.0 - max(0.0, sim)
+        return sim >= _MATCH_THRESHOLD, dist
+    except Exception as exc:
+        print(f"[face_utils] compare_faces error: {exc}")
         return False, 1.0
 
 
 def find_duplicate_face(new_encoding, registered_voters):
     """
-    Check whether a newly captured face matches any already-registered voter.
-
-    Args:
-        new_encoding:       The SFace feature vector of the new registrant.
-        registered_voters:  List of (voter_name, face_encoding_bytes) tuples
-                            fetched from the database.
-
-    Returns:
-        (is_duplicate: bool, matched_name: str | None)
-        is_duplicate is True if the face is already registered under a different account.
+    Check whether a new registrant's face matches any already-registered voter.
+    Returns (is_duplicate: bool, matched_name: str | None).
     """
     if recognizer is None or new_encoding is None:
         return False, None
-
-    # SFace cosine similarity threshold — same as login verification
-    DUPLICATE_THRESHOLD = 0.363
-
-    for voter_name, encoding_bytes in registered_voters:
-        if not encoding_bytes:
+    for voter_name, enc_bytes in registered_voters:
+        if not enc_bytes:
             continue
         try:
-            stored_encoding = deserialize_encoding(encoding_bytes)
-            similarity = recognizer.match(new_encoding, stored_encoding, 0)  # 0 = COSINE
-            if similarity >= DUPLICATE_THRESHOLD:
-                print(f"[DUPLICATE FACE] Incoming face matches registered voter: {voter_name} (similarity={similarity:.4f})")
+            with _det_lock:
+                sim = float(recognizer.match(new_encoding, deserialize_encoding(enc_bytes), 0))
+            if sim >= _DUP_THRESHOLD:
+                print(f"[face_utils] DUPLICATE face — matches {voter_name!r} (sim={sim:.4f})")
                 return True, voter_name
-        except Exception as e:
-            print(f"Error comparing face against voter '{voter_name}': {e}")
-            continue
-
+        except Exception as exc:
+            print(f"[face_utils] find_duplicate_face error for {voter_name!r}: {exc}")
     return False, None
 
 
-
-def save_face_image(image_array, filepath):
-    """Save a face image to disk."""
+def save_face_image(image_array: np.ndarray, filepath: str) -> bool:
+    """Save RGB face array to disk as JPEG."""
     try:
-        img = Image.fromarray(image_array)
-        img.save(filepath, "JPEG", quality=90)
+        Image.fromarray(image_array).save(filepath, "JPEG", quality=90)
         return True
-    except Exception as e:
-        print(f"Error saving face image: {e}")
+    except Exception as exc:
+        print(f"[face_utils] save_face_image error: {exc}")
         return False
 
 
-def serialize_encoding(encoding):
-    """Serialize a face encoding to bytes for database storage."""
+def serialize_encoding(encoding) -> bytes:
+    """Pickle-serialize an SFace embedding for database storage."""
     return pickle.dumps(encoding)
 
 
-def deserialize_encoding(encoding_bytes):
-    """Deserialize a face encoding from bytes."""
-    return pickle.loads(encoding_bytes)
+def deserialize_encoding(enc_bytes: bytes):
+    """Pickle-deserialize an SFace embedding from database bytes."""
+    return pickle.loads(enc_bytes)
 
 
-def detect_face_in_frame(image_array):
+def analyze_liveness_frames(frames_data: list):
     """
-    Detect face and return its center using OpenCV YuNet.
-    Returns (face_detected: bool, center: tuple).
-    """
-    if detector is None:
-        return False, None
-    try:
-        if len(image_array.shape) == 3 and image_array.shape[2] == 3:
-            bgr_image = cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR)
-        else:
-            bgr_image = image_array
-
-        h, w = bgr_image.shape[:2]
-        detector.setInputSize((w, h))
-        status, faces = detector.detect(bgr_image)
-        
-        if faces is None or len(faces) == 0:
-            return False, None
-
-        # faces[0] -> [x, y, w, h, ...]
-        face = faces[0]
-        x, y, w, h = face[:4]
-        center = (x + w/2.0, y + h/2.0)
-        return True, center
-    except Exception as e:
-        print(f"Error in face detection: {e}")
-        return False, None
-
-
-def analyze_liveness_frames(frames_data):
-    """
-    Analyze multiple frames to detect natural movement (liveness).
-    frames_data: list of base64-encoded image strings.
-    Returns (is_live: bool, movement_score: int, message: str).
+    Confirm liveness from a sequence of base64-encoded frames.
+    Returns (is_live: bool, score: int, message: str).
     """
     if not frames_data or len(frames_data) < 5:
-        return False, 0, "Insufficient frames for liveness detection"
+        return False, 0, "Insufficient frames for liveness detection."
 
-    centers = []
-    face_detected_count = 0
-
-    for frame_b64 in frames_data:
-        image = decode_base64_image(frame_b64)
-        if image is None:
+    centers, hits = [], 0
+    for fb64 in frames_data:
+        img = decode_base64_image(fb64)
+        if img is None:
             continue
-
-        detected, center = detect_face_in_frame(image)
-        if detected:
-            face_detected_count += 1
+        ok, center = detect_face_in_frame(img)
+        if ok:
+            hits += 1
             centers.append(center)
 
-    if face_detected_count < len(frames_data) * 0.5:
-        return False, 0, "Face not consistently detected. Please face the camera directly."
+    if hits < len(frames_data) * 0.4:
+        return False, 0, "Face not consistently detected. Please look directly into the camera."
 
-    # Check for natural movement (variance in face center position)
     if len(centers) >= 2:
-        xs = [c[0] for c in centers]
-        ys = [c[1] for c in centers]
-        var_x = np.var(xs)
-        var_y = np.var(ys)
-        
-        # If there's slight natural movement, confirm liveness
-        if var_x > 0.5 or var_y > 0.5:
-            return True, 1, "Liveness confirmed! Natural movement detected."
+        var_x = float(np.var([c[0] for c in centers]))
+        var_y = float(np.var([c[1] for c in centers]))
+        if var_x > 0.4 or var_y > 0.4:
+            return True, 1, "Liveness confirmed — natural movement detected."
 
     return False, 0, "No natural movement detected. Please move slightly while facing the camera."

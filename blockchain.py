@@ -1,6 +1,12 @@
 """
 Blockchain module for SecureVote Online Voting System.
 Implements a simple blockchain for immutable vote storage.
+
+Performance notes
+─────────────────
+• get_vote_counts()   – result is cached in _vote_cache; invalidated on add_vote()
+• is_chain_valid()    – result is cached in _valid_cache; invalidated on add_vote()
+• mine_block()        – difficulty=2 (unchanged); cache prevents re-validation overhead
 """
 
 import hashlib
@@ -55,13 +61,24 @@ class Blockchain:
     def __init__(self):
         self.chain = []
         self.difficulty = 2
+        # ── Performance caches ──────────────────────────────────────
+        # Invalidated every time a new block is added.
+        self._vote_cache: dict = {}          # election_id -> {candidate: count}
+        self._valid_cache: bool | None = None  # True/False or None (not computed)
+        # ────────────────────────────────────────────────────────────
         self.create_genesis_block()
+
+    def _invalidate_caches(self):
+        """Clear cached results whenever the chain changes."""
+        self._vote_cache.clear()
+        self._valid_cache = None
 
     def create_genesis_block(self):
         """Create the first block in the chain."""
         genesis = Block(0, time.time(), {"message": "Genesis Block - SecureVote Initialized"}, "0")
         genesis.mine_block(self.difficulty)
         self.chain.append(genesis)
+        self._invalidate_caches()
 
     def get_latest_block(self):
         """Get the most recent block."""
@@ -89,22 +106,31 @@ class Blockchain:
         )
         new_block.mine_block(self.difficulty)
         self.chain.append(new_block)
+        self._invalidate_caches()   # ← invalidate so next read is fresh
         return new_block
 
     def is_chain_valid(self):
-        """Validate the integrity of the entire blockchain."""
+        """Validate the integrity of the entire blockchain.
+
+        Result is cached after the first call and reused until a new block
+        is added, avoiding an O(n) hash-recalculation on every page load.
+        """
+        if self._valid_cache is not None:
+            return self._valid_cache
+
         for i in range(1, len(self.chain)):
-            current = self.chain[i]
+            current  = self.chain[i]
             previous = self.chain[i - 1]
 
-            # Verify current block hash
             if current.hash != current.calculate_hash():
+                self._valid_cache = False
                 return False
 
-            # Verify chain linkage
             if current.previous_hash != previous.hash:
+                self._valid_cache = False
                 return False
 
+        self._valid_cache = True
         return True
 
     def get_chain(self):
@@ -112,15 +138,25 @@ class Blockchain:
         return [block.to_dict() for block in self.chain]
 
     def get_vote_counts(self, election_id=None):
-        """Tally votes from the blockchain."""
-        counts = {}
+        """Tally votes from the blockchain.
+
+        Results are cached per election_id to avoid scanning the full chain
+        on every index / results / admin page load.
+        """
+        cache_key = election_id if election_id is not None else "__all__"
+        if cache_key in self._vote_cache:
+            return dict(self._vote_cache[cache_key])  # return a copy
+
+        counts: dict = {}
         for block in self.chain:
             if block.data.get("type") == "vote":
                 if election_id and block.data.get("election_id") != election_id:
                     continue
                 candidate = block.data["candidate_name"]
                 counts[candidate] = counts.get(candidate, 0) + 1
-        return counts
+
+        self._vote_cache[cache_key] = counts
+        return dict(counts)
 
     def get_total_votes(self):
         """Get total number of votes cast."""
@@ -129,4 +165,6 @@ class Blockchain:
     def reset(self):
         """Reset blockchain (admin only — for new elections)."""
         self.chain = []
+        self._invalidate_caches()
         self.create_genesis_block()
+

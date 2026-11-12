@@ -4,349 +4,158 @@
 {% block head %}
 <style>
 /* ═══════════════════════════════════════════════
-   MD-DATE-TIME PICKER  –  Admin Panel
+   VOTING PERIOD MANAGER  –  Admin Panel
    ═══════════════════════════════════════════════ */
 
-.mdtp-wrapper {
+.vp-card-body {
+  margin-top: 1.25rem;
+}
+
+.vp-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1.5rem;
-  margin-top: 1.2rem;
+  margin-top: 1rem;
 }
-@media (max-width: 860px) { .mdtp-wrapper { grid-template-columns: 1fr; } }
+@media (max-width: 820px) {
+  .vp-grid { grid-template-columns: 1fr; gap: 1.2rem; }
+}
 
-/* Trigger button */
-.mdtp-trigger {
-  background: transparent;
-  border: 1px solid rgba(124,58,237,0.28);
-  border-radius: 14px;
-  padding: 1rem 1.2rem;
-  cursor: pointer;
-  transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+.vp-field-card {
+  background: rgba(18, 18, 38, 0.7);
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 16px;
+  padding: 1.25rem 1.4rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  user-select: none;
+  gap: 0.75rem;
 }
-.mdtp-trigger:hover {
-  background: rgba(124,58,237,0.08);
-  border-color: rgba(124,58,237,0.55);
-  box-shadow: 0 4px 18px rgba(124,58,237,0.18);
-}
-.mdtp-trigger-label {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: #a78bfa;
-  font-weight: 700;
-}
-.mdtp-trigger-date {
-  font-size: 1rem;
-  font-weight: 600;
-  color: #f9fafb;
-}
-.mdtp-trigger-time {
-  font-size: 0.88rem;
-  color: #34d399;
-  font-weight: 600;
-}
-.mdtp-trigger-hint {
-  font-size: 0.68rem;
-  color: #6b7280;
-  margin-top: 2px;
+.vp-field-card:focus-within {
+  border-color: rgba(139, 92, 246, 0.6);
+  box-shadow: 0 4px 20px rgba(124, 58, 237, 0.15);
 }
 
-/* Picker panel */
-.mdtp-panel {
-  display: none;
-  margin-top: 0.6rem;
-  border-radius: 18px;
-  overflow: hidden;
-  border: 1px solid rgba(124,58,237,0.38);
-  box-shadow: 0 24px 60px rgba(0,0,0,0.55), 0 0 0 1px rgba(124,58,237,0.1);
-  background: #13132a;
-  animation: mdtp-in 0.18s ease;
-}
-.mdtp-panel.open { display: block; }
-@keyframes mdtp-in {
-  from { opacity:0; transform:translateY(-6px); }
-  to   { opacity:1; transform:translateY(0); }
-}
-
-/* Purple header */
-.mdtp-header {
-  background: linear-gradient(135deg, #7c3aed 0%, #4c1d95 100%);
-  padding: 1.1rem 1.4rem 1rem;
-  user-select: none;
-  position: relative;
-}
-.mdtp-header-year {
-  font-size: 0.82rem;
-  color: rgba(255,255,255,0.65);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  margin-bottom: 2px;
-}
-.mdtp-header-date {
-  font-size: 1.65rem;
-  font-weight: 800;
-  color: #fff;
-  line-height: 1.1;
-  letter-spacing: -0.01em;
-}
-.mdtp-header-time {
-  font-size: 0.95rem;
-  color: rgba(255,255,255,0.78);
-  margin-top: 3px;
-  font-weight: 500;
-}
-
-/* Mode tabs */
-.mdtp-mode-tabs {
-  display: flex;
-  background: rgba(0,0,0,0.25);
-  border-bottom: 1px solid rgba(124,58,237,0.15);
-}
-.mdtp-mode-tab {
-  flex: 1;
-  background: none;
-  border: none;
-  color: #6b7280;
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  padding: 0.6rem 0;
-  cursor: pointer;
-  transition: all 0.15s;
-  border-bottom: 2px solid transparent;
-}
-.mdtp-mode-tab:hover { color: #a78bfa; }
-.mdtp-mode-tab.active {
-  color: #a78bfa;
-  border-bottom-color: #7c3aed;
-  background: rgba(124,58,237,0.08);
-}
-
-/* Body */
-.mdtp-body { padding: 0.85rem 1rem; min-height: 270px; }
-
-/* Calendar nav */
-.mdtp-cal-nav {
+.vp-label {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 0.6rem;
-}
-.mdtp-nav-btn {
-  background: none;
-  border: none;
-  color: #a78bfa;
-  font-size: 1.25rem;
-  cursor: pointer;
-  width: 30px; height: 30px;
-  border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  transition: background 0.15s;
-  line-height: 1;
-}
-.mdtp-nav-btn:hover { background: rgba(124,58,237,0.2); }
-.mdtp-cal-my {
-  font-size: 0.88rem;
+  font-size: 0.8rem;
   font-weight: 700;
-  color: #e9d5ff;
-}
-
-/* Weekday headers */
-.mdtp-weekdays {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  margin-bottom: 3px;
-}
-.mdtp-wd {
-  text-align: center;
-  font-size: 0.62rem;
-  color: #6b7280;
-  font-weight: 700;
-  padding: 3px 0;
   text-transform: uppercase;
-}
-
-/* Day grid */
-.mdtp-days {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 1px;
-}
-.mdtp-day {
-  aspect-ratio: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  font-size: 0.75rem;
-  cursor: pointer;
-  color: #9ca3af;
-  transition: all 0.12s;
-  border: none;
-  background: none;
-  width: 100%;
-}
-.mdtp-day:hover:not(.empty) {
-  background: rgba(124,58,237,0.22);
-  color: #e9d5ff;
-}
-.mdtp-day.today {
-  border: 1.5px solid #7c3aed;
+  letter-spacing: 0.08em;
   color: #c4b5fd;
-  font-weight: 700;
 }
-.mdtp-day.selected {
-  background: #7c3aed;
-  color: #fff;
-  font-weight: 700;
-  box-shadow: 0 2px 10px rgba(124,58,237,0.55);
-}
-.mdtp-day.empty { cursor: default; pointer-events: none; }
-
-/* Clock face */
-.mdtp-clock-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding-top: 0.4rem;
-}
-.mdtp-clock-face {
-  position: relative;
-  width: 190px;
-  height: 190px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(124,58,237,0.08) 0%, rgba(0,0,0,0.25) 100%);
-  border: 1px solid rgba(124,58,237,0.2);
-  flex-shrink: 0;
-}
-.mdtp-clock-center {
-  position: absolute;
-  top: 50%; left: 50%;
-  width: 9px; height: 9px;
-  background: #7c3aed;
-  border-radius: 50%;
-  transform: translate(-50%,-50%);
-  z-index: 3;
-  box-shadow: 0 0 8px rgba(124,58,237,0.8);
-}
-.mdtp-clock-hand {
-  position: absolute;
-  bottom: 50%; left: 50%;
-  width: 2px;
-  background: linear-gradient(to top, #7c3aed, #c4b5fd);
-  transform-origin: bottom center;
-  transform: translateX(-50%) rotate(0deg);
-  z-index: 2;
-  border-radius: 2px 2px 0 0;
-  transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
-  box-shadow: 0 0 6px rgba(124,58,237,0.5);
-}
-.mdtp-hour {
-  position: absolute;
-  width: 30px; height: 30px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%;
-  font-size: 0.75rem;
-  font-weight: 600;
-  cursor: pointer;
-  color: #9ca3af;
-  transition: all 0.14s;
-  transform: translate(-50%,-50%);
-  z-index: 4;
-  border: none;
-  background: none;
-}
-.mdtp-hour:hover { background: rgba(124,58,237,0.28); color: #e9d5ff; }
-.mdtp-hour.selected {
-  background: #7c3aed;
-  color: #fff;
-  box-shadow: 0 2px 10px rgba(124,58,237,0.6);
-}
-
-/* Time controls row */
-.mdtp-time-row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.75rem;
-}
-.mdtp-ampm {
-  background: rgba(124,58,237,0.1);
-  border: 1px solid rgba(124,58,237,0.3);
-  color: #9ca3af;
-  padding: 5px 14px;
-  border-radius: 20px;
-  font-size: 0.78rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.15s;
-  letter-spacing: 0.04em;
-}
-.mdtp-ampm:hover { border-color: #7c3aed; color: #a78bfa; }
-.mdtp-ampm.active {
-  background: #7c3aed;
-  border-color: #7c3aed;
-  color: #fff;
-  box-shadow: 0 2px 8px rgba(124,58,237,0.45);
-}
-.mdtp-min-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
-}
-.mdtp-min-label {
-  font-size: 0.6rem;
-  color: #6b7280;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-}
-.mdtp-min-input {
-  width: 58px;
-  text-align: center;
-  background: rgba(0,0,0,0.3);
-  border: 1px solid rgba(124,58,237,0.3);
-  color: #f9fafb;
-  border-radius: 8px;
-  padding: 5px 6px;
-  font-size: 1rem;
-  font-weight: 700;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.mdtp-min-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.2); }
-
-/* Footer */
-.mdtp-footer {
-  display: flex;
-  justify-content: flex-end;
-  gap: 2px;
-  padding: 0.5rem 0.75rem;
-  border-top: 1px solid rgba(124,58,237,0.12);
-}
-.mdtp-btn {
-  background: none;
-  border: none;
+.vp-label span.badge-tag {
+  font-size: 0.68rem;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(139, 92, 246, 0.15);
   color: #a78bfa;
-  font-size: 0.78rem;
+}
+
+.vp-datetime-input {
+  width: 100%;
+  background: rgba(10, 10, 22, 0.85);
+  border: 1.5px solid rgba(139, 92, 246, 0.35);
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #ffffff;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  color-scheme: dark;
+}
+.vp-datetime-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.25);
+  background: rgba(15, 15, 30, 0.95);
+}
+
+.vp-preview-text {
+  font-size: 0.84rem;
+  color: #34d399;
+  font-weight: 500;
+  min-height: 1.2rem;
+}
+
+.vp-presets-bar {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(139, 92, 246, 0.25);
+  border-radius: 12px;
+}
+.vp-presets-label {
+  font-size: 0.75rem;
   font-weight: 700;
-  cursor: pointer;
-  padding: 6px 12px;
-  border-radius: 6px;
-  transition: background 0.15s;
+  color: #a78bfa;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  margin-right: 4px;
 }
-.mdtp-btn:hover { background: rgba(124,58,237,0.15); }
-.mdtp-btn.ok { color: #34d399; }
-.mdtp-btn.ok:hover { background: rgba(52,211,153,0.12); }
+.vp-preset-btn {
+  background: rgba(139, 92, 246, 0.12);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #e9d5ff;
+  border-radius: 8px;
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.vp-preset-btn:hover {
+  background: rgba(139, 92, 246, 0.3);
+  border-color: #8b5cf6;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.vp-duration-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 1.25rem;
+  background: rgba(59, 130, 246, 0.1);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+.vp-duration-pill.invalid {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.vp-btn-update {
+  background: linear-gradient(135deg, #7c3aed 0%, #6366f1 100%) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  padding: 0.85rem 2rem !important;
+  border-radius: 12px !important;
+  border: none !important;
+  font-size: 0.95rem !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  box-shadow: 0 4px 15px rgba(124, 58, 237, 0.35) !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+.vp-btn-update:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 22px rgba(124, 58, 237, 0.55) !important;
+}
 
 @keyframes pulse {
   0%,100% { opacity:1; }
@@ -524,136 +333,78 @@
         </div>
 
         <!-- Set period form -->
-        <form action="{{ url_for('admin_set_voting_period') }}" method="POST" id="votingPeriodForm">
+        <form action="{{ url_for('admin_set_voting_period') }}" method="POST" id="votingPeriodForm" class="vp-card-body">
             <input type="hidden" name="action" value="set">
-            <!-- Hidden inputs carry the actual datetime values for form submission -->
-            <input type="hidden" id="voting_start" name="voting_start"
-                   value="{{ election['voting_start'][:16] if election['voting_start'] else '' }}">
-            <input type="hidden" id="voting_end" name="voting_end"
-                   value="{{ election['voting_end'][:16] if election['voting_end'] else '' }}">
 
-            <!-- ══ MD DateTime Pickers ══ -->
-            <div class="mdtp-wrapper">
+            <!-- Presets Bar -->
+            <div class="vp-presets-bar">
+                <span class="vp-presets-label">⚡ Quick Presets:</span>
+                <button type="button" class="vp-preset-btn" onclick="vpSetPreset('now_2h')">+2 Hours</button>
+                <button type="button" class="vp-preset-btn" onclick="vpSetPreset('now_24h')">+24 Hours</button>
+                <button type="button" class="vp-preset-btn" onclick="vpSetPreset('now_3d')">+3 Days</button>
+                <button type="button" class="vp-preset-btn" onclick="vpSetPreset('now_7d')">+1 Week</button>
+                <button type="button" class="vp-preset-btn" onclick="vpSetPreset('today_9to5')">Today 9 AM - 5 PM</button>
+            </div>
 
-                <!-- ── START picker ── -->
-                <div class="mdtp-block" id="start-block">
-                    <div class="mdtp-trigger" onclick="mdtpOpen('start')" id="start-trigger">
-                        <div class="mdtp-trigger-label">📅 Voting Start</div>
-                        <div class="mdtp-trigger-date" id="start-trig-date">Loading…</div>
-                        <div class="mdtp-trigger-time" id="start-trig-time">Loading…</div>
-                        <div class="mdtp-trigger-hint">↓ Click to change</div>
+            <!-- Two-column Start & End Picker Grid -->
+            <div class="vp-grid">
+                <!-- Start Field -->
+                <div class="vp-field-card">
+                    <div class="vp-label">
+                        <span>📅 Voting Start Time</span>
+                        <span class="badge-tag">Opens ballot</span>
                     </div>
-                    <div class="mdtp-panel" id="start-panel">
-                        <div class="mdtp-header">
-                            <div class="mdtp-header-year" id="start-hdr-year">2026</div>
-                            <div class="mdtp-header-date" id="start-hdr-date">Sat, Sep 19</div>
-                            <div class="mdtp-header-time" id="start-hdr-time">10:31 PM</div>
-                        </div>
-                        <div class="mdtp-mode-tabs">
-                            <button class="mdtp-mode-tab active" id="start-tab-date" onclick="mdtpMode('start','date')">📅 Date</button>
-                            <button class="mdtp-mode-tab" id="start-tab-time" onclick="mdtpMode('start','time')">🕐 Time</button>
-                        </div>
-                        <div class="mdtp-body">
-                            <div id="start-date-view">
-                                <div class="mdtp-cal-nav">
-                                    <button class="mdtp-nav-btn" onclick="mdtpPrev('start')">‹</button>
-                                    <span class="mdtp-cal-my" id="start-cal-my"></span>
-                                    <button class="mdtp-nav-btn" onclick="mdtpNext('start')">›</button>
-                                </div>
-                                <div class="mdtp-weekdays">
-                                    <div class="mdtp-wd">Su</div><div class="mdtp-wd">Mo</div><div class="mdtp-wd">Tu</div>
-                                    <div class="mdtp-wd">We</div><div class="mdtp-wd">Th</div><div class="mdtp-wd">Fr</div>
-                                    <div class="mdtp-wd">Sa</div>
-                                </div>
-                                <div class="mdtp-days" id="start-cal-days"></div>
-                            </div>
-                            <div id="start-time-view" style="display:none">
-                                <div class="mdtp-clock-wrap">
-                                    <div class="mdtp-clock-face" id="start-clock-face"></div>
-                                    <div class="mdtp-time-row">
-                                        <button class="mdtp-ampm" id="start-am-btn" onclick="mdtpSetAM('start',true)">AM</button>
-                                        <div class="mdtp-min-wrap">
-                                            <div class="mdtp-min-label">Minutes</div>
-                                            <input class="mdtp-min-input" id="start-min-input" type="number" min="0" max="59"
-                                                   oninput="mdtpMinChange('start')" onchange="mdtpMinChange('start')">
-                                        </div>
-                                        <button class="mdtp-ampm" id="start-pm-btn" onclick="mdtpSetAM('start',false)">PM</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mdtp-footer">
-                            <button class="mdtp-btn" onclick="mdtpNow('start')">Now</button>
-                            <button class="mdtp-btn" onclick="mdtpClose('start')">Cancel</button>
-                            <button class="mdtp-btn ok" onclick="mdtpSave('start')">OK</button>
-                        </div>
+                    <div class="vp-input-wrap">
+                        <input type="datetime-local" id="voting_start" name="voting_start"
+                               class="vp-datetime-input"
+                               value="{{ election['voting_start'][:16] if election['voting_start'] else '' }}"
+                               required onchange="vpUpdatePreview()">
                     </div>
+                    <div class="vp-preview-text" id="start-preview-text"></div>
                 </div>
 
-                <!-- ── END picker ── -->
-                <div class="mdtp-block" id="end-block">
-                    <div class="mdtp-trigger" onclick="mdtpOpen('end')" id="end-trigger">
-                        <div class="mdtp-trigger-label">🏁 Voting End</div>
-                        <div class="mdtp-trigger-date" id="end-trig-date">Loading…</div>
-                        <div class="mdtp-trigger-time" id="end-trig-time">Loading…</div>
-                        <div class="mdtp-trigger-hint">↓ Click to change</div>
+                <!-- End Field -->
+                <div class="vp-field-card">
+                    <div class="vp-label">
+                        <span>🏁 Voting End Time</span>
+                        <span class="badge-tag">Closes ballot</span>
                     </div>
-                    <div class="mdtp-panel" id="end-panel">
-                        <div class="mdtp-header">
-                            <div class="mdtp-header-year" id="end-hdr-year">2026</div>
-                            <div class="mdtp-header-date" id="end-hdr-date">Sun, Sep 20</div>
-                            <div class="mdtp-header-time" id="end-hdr-time">10:31 PM</div>
-                        </div>
-                        <div class="mdtp-mode-tabs">
-                            <button class="mdtp-mode-tab active" id="end-tab-date" onclick="mdtpMode('end','date')">📅 Date</button>
-                            <button class="mdtp-mode-tab" id="end-tab-time" onclick="mdtpMode('end','time')">🕐 Time</button>
-                        </div>
-                        <div class="mdtp-body">
-                            <div id="end-date-view">
-                                <div class="mdtp-cal-nav">
-                                    <button class="mdtp-nav-btn" onclick="mdtpPrev('end')">‹</button>
-                                    <span class="mdtp-cal-my" id="end-cal-my"></span>
-                                    <button class="mdtp-nav-btn" onclick="mdtpNext('end')">›</button>
-                                </div>
-                                <div class="mdtp-weekdays">
-                                    <div class="mdtp-wd">Su</div><div class="mdtp-wd">Mo</div><div class="mdtp-wd">Tu</div>
-                                    <div class="mdtp-wd">We</div><div class="mdtp-wd">Th</div><div class="mdtp-wd">Fr</div>
-                                    <div class="mdtp-wd">Sa</div>
-                                </div>
-                                <div class="mdtp-days" id="end-cal-days"></div>
-                            </div>
-                            <div id="end-time-view" style="display:none">
-                                <div class="mdtp-clock-wrap">
-                                    <div class="mdtp-clock-face" id="end-clock-face"></div>
-                                    <div class="mdtp-time-row">
-                                        <button class="mdtp-ampm" id="end-am-btn" onclick="mdtpSetAM('end',true)">AM</button>
-                                        <div class="mdtp-min-wrap">
-                                            <div class="mdtp-min-label">Minutes</div>
-                                            <input class="mdtp-min-input" id="end-min-input" type="number" min="0" max="59"
-                                                   oninput="mdtpMinChange('end')" onchange="mdtpMinChange('end')">
-                                        </div>
-                                        <button class="mdtp-ampm" id="end-pm-btn" onclick="mdtpSetAM('end',false)">PM</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mdtp-footer">
-                            <button class="mdtp-btn" onclick="mdtpNow('end')">Now</button>
-                            <button class="mdtp-btn" onclick="mdtpClose('end')">Cancel</button>
-                            <button class="mdtp-btn ok" onclick="mdtpSave('end')">OK</button>
-                        </div>
+                    <div class="vp-input-wrap">
+                        <input type="datetime-local" id="voting_end" name="voting_end"
+                               class="vp-datetime-input"
+                               value="{{ election['voting_end'][:16] if election['voting_end'] else '' }}"
+                               required onchange="vpUpdatePreview()">
                     </div>
+                    <div class="vp-preview-text" id="end-preview-text"></div>
                 </div>
+            </div>
 
-            </div><!-- /.mdtp-wrapper -->
+            <!-- Duration Calculator Banner -->
+            <div id="vp-duration-container">
+                <div class="vp-duration-pill" id="vp-duration-pill">
+                    ⏱️ Select start and end to view total voting duration
+                </div>
+            </div>
 
-            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-top:1.5rem;">
-                <button type="submit" class="btn btn-primary">💾 Save Voting Period</button>
+            <!-- Voter Announcement Checkbox -->
+            <div style="margin-top:1.25rem;display:flex;align-items:center;gap:10px;">
+                <input type="checkbox" id="notify_voters" name="notify_voters" value="1"
+                       style="width:18px;height:18px;accent-color:#7c3aed;cursor:pointer;">
+                <label for="notify_voters" style="color:#e2e8f0;font-size:0.88rem;cursor:pointer;user-select:none;">
+                    📢 Send email announcement to all registered voters with the updated schedule
+                </label>
+            </div>
+
+            <!-- Action Buttons: UPDATE and CLEAR -->
+            <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-top:1.5rem;align-items:center;">
+                <button type="submit" class="vp-btn-update" id="vpSubmitBtn">
+                    🔄 Update Voting Period
+                </button>
                 {% if election['voting_start'] %}
                 <button type="button" class="btn btn-outline"
                         onclick="clearPeriod()"
-                        style="border-color:var(--danger);color:var(--danger);">
-                    🗑️ Clear Period
+                        style="border-color:rgba(239,68,68,0.5);color:#f87171;padding:0.8rem 1.4rem;border-radius:12px;">
+                    🗑️ Clear Period (Unrestricted)
                 </button>
                 {% endif %}
             </div>
@@ -694,266 +445,130 @@
     document.getElementById('votingPeriodForm').addEventListener('submit', function(e) {
       var s  = document.getElementById('voting_start').value;
       var en = document.getElementById('voting_end').value;
-      if (s && en && en <= s) {
+      if (!s || !en) {
+        e.preventDefault();
+        alert('Please select both Start and End date/time.');
+        return;
+      }
+      if (en <= s) {
         e.preventDefault();
         alert('End date/time must be after start date/time.');
       }
     });
 
   /* ═══════════════════════════════════════════════════════════
-     MD-DATE-TIME PICKER ENGINE
+     VOTING PERIOD ENGINE
      ═══════════════════════════════════════════════════════════ */
-  (function () {
-    'use strict';
+  function pad2(n) { return String(n).padStart(2, '0'); }
 
-    var MONTHS  = ['January','February','March','April','May','June',
-                   'July','August','September','October','November','December'];
-    var MSHORT  = ['Jan','Feb','Mar','Apr','May','Jun',
-                   'Jul','Aug','Sep','Oct','Nov','Dec'];
-    var WLONG   = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  function toLocalISOString(d) {
+    return d.getFullYear() + '-' +
+           pad2(d.getMonth() + 1) + '-' +
+           pad2(d.getDate()) + 'T' +
+           pad2(d.getHours()) + ':' +
+           pad2(d.getMinutes());
+  }
 
-    function pad(n) { return String(n).padStart(2, '0'); }
-    function dim(m, y) { return new Date(y, m, 0).getDate(); } // days in month (m 1-based)
+  function formatHumanDate(isoStr) {
+    if (!isoStr) return '';
+    var d = new Date(isoStr);
+    if (isNaN(d.getTime())) return '';
+    var options = {
+      weekday: 'short',
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    };
+    return d.toLocaleString(undefined, options);
+  }
 
-    /* ── Per-picker state store ─────────────────────────────── */
-    var P = {};   // P['start'] = { year, month, day, hour, minute, ampm, navY, navM, ... }
+  function vpUpdatePreview() {
+    var startVal = document.getElementById('voting_start').value;
+    var endVal = document.getElementById('voting_end').value;
+    var startPrev = document.getElementById('start-preview-text');
+    var endPrev = document.getElementById('end-preview-text');
+    var durPill = document.getElementById('vp-duration-pill');
 
-    /* ── Init one picker ──────────────────────────────────── */
-    function initPicker(id, hiddenId, iso) {
-      var now  = new Date();
-      var seed = now;
-      if (iso && iso.length >= 16) {
-        var p = new Date(iso); if (!isNaN(p)) seed = p;
-      }
-      var h24 = seed.getHours();
-      P[id] = {
-        hiddenId : hiddenId,
-        year  : seed.getFullYear(),
-        month : seed.getMonth() + 1,
-        day   : seed.getDate(),
-        hour  : h24 % 12 || 12,
-        minute: seed.getMinutes(),
-        ampm  : h24 >= 12 ? 'PM' : 'AM',
-        navY  : seed.getFullYear(),
-        navM  : seed.getMonth() + 1,
-        view  : 'date'
-      };
-      renderTrigger(id);
-      writeHidden(id);
-    }
-
-    /* ── Open / Close ─────────────────────────────────────── */
-    function mdtpOpen(id) {
-      // Close the other picker first
-      Object.keys(P).forEach(function(k) {
-        if (k !== id) g(k + '-panel') && g(k + '-panel').classList.remove('open');
-      });
-      var panel = g(id + '-panel');
-      if (!panel) return;
-      if (panel.classList.contains('open')) { panel.classList.remove('open'); return; }
-      // Reset nav to selected month when opening
-      P[id].navY = P[id].year;
-      P[id].navM = P[id].month;
-      P[id].view = 'date';
-      panel.classList.add('open');
-      renderView(id);
-    }
-    function mdtpClose(id) {
-      var panel = g(id + '-panel');
-      if (panel) panel.classList.remove('open');
-    }
-    function mdtpSave(id) {
-      writeHidden(id);
-      renderTrigger(id);
-      mdtpClose(id);
-    }
-    function mdtpNow(id) {
-      var now = new Date(), h24 = now.getHours();
-      var s = P[id];
-      s.year = now.getFullYear(); s.month = now.getMonth() + 1; s.day = now.getDate();
-      s.hour = h24 % 12 || 12; s.minute = now.getMinutes();
-      s.ampm = h24 >= 12 ? 'PM' : 'AM';
-      s.navY = s.year; s.navM = s.month;
-      renderHeader(id); renderView(id); writeHidden(id); renderTrigger(id);
+    if (startVal) {
+      startPrev.innerHTML = '✨ Starts: ' + formatHumanDate(startVal);
+    } else {
+      startPrev.innerHTML = 'Select a valid start date & time';
     }
 
-    /* ── Mode switch ──────────────────────────────────────── */
-    function mdtpMode(id, mode) {
-      P[id].view = mode;
-      renderView(id);
+    if (endVal) {
+      endPrev.innerHTML = '🏁 Ends: ' + formatHumanDate(endVal);
+    } else {
+      endPrev.innerHTML = 'Select a valid end date & time';
     }
 
-    /* ── Calendar navigation ──────────────────────────────── */
-    function mdtpPrev(id) {
-      var s = P[id];
-      s.navM--; if (s.navM < 1) { s.navM = 12; s.navY--; }
-      renderCalendar(id);
-    }
-    function mdtpNext(id) {
-      var s = P[id];
-      s.navM++; if (s.navM > 12) { s.navM = 1; s.navY++; }
-      renderCalendar(id);
-    }
+    if (startVal && endVal) {
+      var sTime = new Date(startVal).getTime();
+      var eTime = new Date(endVal).getTime();
+      var diffMs = eTime - sTime;
 
-    /* ── Day / Hour selection ─────────────────────────────── */
-    function mdtpDay(id, d) {
-      var s = P[id];
-      s.year = s.navY; s.month = s.navM; s.day = d;
-      renderCalendar(id); renderHeader(id); writeHidden(id);
-      // Auto-advance to time after picking a day
-      P[id].view = 'time';
-      renderView(id);
-    }
-    function mdtpHour(id, h) {
-      P[id].hour = h;
-      renderClock(id); renderHeader(id); writeHidden(id);
-    }
-    function mdtpSetAM(id, isAM) {
-      P[id].ampm = isAM ? 'AM' : 'PM';
-      g(id + '-am-btn') && g(id + '-am-btn').classList.toggle('active', isAM);
-      g(id + '-pm-btn') && g(id + '-pm-btn').classList.toggle('active', !isAM);
-      renderHeader(id); writeHidden(id);
-    }
-    function mdtpMinChange(id) {
-      var inp = g(id + '-min-input'); if (!inp) return;
-      var v = Math.max(0, Math.min(59, parseInt(inp.value) || 0));
-      inp.value = pad(v);
-      P[id].minute = v;
-      renderHeader(id); writeHidden(id);
-    }
-
-    /* ── Renderers ────────────────────────────────────────── */
-    function renderView(id) {
-      var s = P[id];
-      var dv = g(id + '-date-view'), tv = g(id + '-time-view');
-      var dt = g(id + '-tab-date'),  tt = g(id + '-tab-time');
-      if (s.view === 'date') {
-        if (dv) dv.style.display = 'block';
-        if (tv) tv.style.display = 'none';
-        if (dt) { dt.classList.add('active'); }
-        if (tt) { tt.classList.remove('active'); }
-        renderCalendar(id);
+      if (diffMs <= 0) {
+        durPill.className = 'vp-duration-pill invalid';
+        durPill.innerHTML = '⚠️ Invalid: End time must be after Start time!';
       } else {
-        if (dv) dv.style.display = 'none';
-        if (tv) tv.style.display = 'block';
-        if (dt) { dt.classList.remove('active'); }
-        if (tt) { tt.classList.add('active'); }
-        renderClock(id);
+        durPill.className = 'vp-duration-pill';
+        var totalMinutes = Math.floor(diffMs / (1000 * 60));
+        var days = Math.floor(totalMinutes / (60 * 24));
+        var hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+        var minutes = totalMinutes % 60;
+
+        var parts = [];
+        if (days > 0) parts.push(days + (days === 1 ? ' day' : ' days'));
+        if (hours > 0) parts.push(hours + (hours === 1 ? ' hr' : ' hrs'));
+        if (minutes > 0 || parts.length === 0) parts.push(minutes + (minutes === 1 ? ' min' : ' mins'));
+
+        durPill.innerHTML = '⏱️ Total Voting Window: <strong>' + parts.join(', ') + '</strong>';
       }
-      renderHeader(id);
+    } else {
+      durPill.className = 'vp-duration-pill';
+      durPill.innerHTML = '⏱️ Select start and end to view total voting duration';
     }
+  }
 
-    function renderHeader(id) {
-      var s = P[id];
-      var wd = new Date(s.year, s.month - 1, s.day).getDay();
-      setText(id + '-hdr-year', s.year);
-      setText(id + '-hdr-date', WLONG[wd].slice(0,3) + ', ' + MSHORT[s.month-1] + ' ' + s.day);
-      setText(id + '-hdr-time', pad(s.hour) + ':' + pad(s.minute) + ' ' + s.ampm);
-    }
+  function vpSetPreset(preset) {
+    var now = new Date();
+    var start = new Date(now);
+    var end = new Date(now);
 
-    function renderTrigger(id) {
-      var s = P[id];
-      var wd = new Date(s.year, s.month - 1, s.day).getDay();
-      setText(id + '-trig-date', WLONG[wd] + ', ' + MONTHS[s.month-1] + ' ' + s.day + ', ' + s.year);
-      setText(id + '-trig-time', pad(s.hour) + ':' + pad(s.minute) + ' ' + s.ampm);
-    }
-
-    function renderCalendar(id) {
-      var s = P[id];
-      var today = new Date();
-      setText(id + '-cal-my', MONTHS[s.navM - 1] + ' ' + s.navY);
-      var firstDay = new Date(s.navY, s.navM - 1, 1).getDay();
-      var total    = dim(s.navM, s.navY);
-      var html = '';
-      for (var e = 0; e < firstDay; e++) html += '<div class="mdtp-day empty"></div>';
-      for (var d = 1; d <= total; d++) {
-        var isTod = (d === today.getDate() && s.navM === today.getMonth()+1 && s.navY === today.getFullYear());
-        var isSel = (d === s.day && s.navM === s.month && s.navY === s.year);
-        var cls = 'mdtp-day' + (isTod ? ' today' : '') + (isSel ? ' selected' : '');
-        html += '<div class="' + cls + '" onclick="mdtpDay(\'' + id + '\',' + d + ')">' + d + '</div>';
+    if (preset === 'now_2h') {
+      end.setHours(end.getHours() + 2);
+    } else if (preset === 'now_24h') {
+      end.setDate(end.getDate() + 1);
+    } else if (preset === 'now_3d') {
+      end.setDate(end.getDate() + 3);
+    } else if (preset === 'now_7d') {
+      end.setDate(end.getDate() + 7);
+    } else if (preset === 'today_9to5') {
+      start.setHours(9, 0, 0, 0);
+      end.setHours(17, 0, 0, 0);
+      if (now > end) {
+        start.setDate(start.getDate() + 1);
+        end.setDate(end.getDate() + 1);
       }
-      var el = g(id + '-cal-days'); if (el) el.innerHTML = html;
     }
 
-    function renderClock(id) {
-      var s = P[id];
-      var face = g(id + '-clock-face'); if (!face) return;
-      var R = 95, cx = 95, cy = 95;  // face is 190×190 px
-      var r = 68;                     // hour ring radius
+    document.getElementById('voting_start').value = toLocalISOString(start);
+    document.getElementById('voting_end').value = toLocalISOString(end);
+    vpUpdatePreview();
+  }
 
-      // Clock hand angle: 12→0°, 3→90°, 6→180°, 9→270°
-      var handDeg = s.hour * 30;  // each hour = 30°
-      var handLen = 60;
-
-      var html = '<div class="mdtp-clock-center"></div>';
-      html += '<div class="mdtp-clock-hand" style="height:' + handLen + 'px;' +
-              'transform:translateX(-50%) rotate(' + handDeg + 'deg);"></div>';
-
-      for (var n = 1; n <= 12; n++) {
-        var ang = (n * 30 - 90) * Math.PI / 180;
-        var x   = cx + r * Math.cos(ang);
-        var y   = cy + r * Math.sin(ang);
-        var sel = (s.hour === n);
-        html += '<div class="mdtp-hour' + (sel ? ' selected' : '') + '"' +
-                ' style="left:' + x.toFixed(1) + 'px;top:' + y.toFixed(1) + 'px;"' +
-                ' onclick="mdtpHour(\'' + id + '\',' + n + ')">' + n + '</div>';
-      }
-      face.innerHTML = html;
-
-      // Minute input & AM/PM buttons
-      var mi = g(id + '-min-input');
-      if (mi) mi.value = pad(s.minute);
-      g(id + '-am-btn') && g(id + '-am-btn').classList.toggle('active', s.ampm === 'AM');
-      g(id + '-pm-btn') && g(id + '-pm-btn').classList.toggle('active', s.ampm === 'PM');
+  // Initialize previews on page load
+  document.addEventListener('DOMContentLoaded', function() {
+    var sInput = document.getElementById('voting_start');
+    var eInput = document.getElementById('voting_end');
+    if (sInput && (!sInput.value || !eInput.value)) {
+      vpSetPreset('now_24h');
+    } else {
+      vpUpdatePreview();
     }
-
-    /* ── Write to hidden input ────────────────────────────── */
-    function writeHidden(id) {
-      var s = P[id];
-      var h24 = s.hour % 12; if (s.ampm === 'PM') h24 += 12;
-      var iso = s.year + '-' + pad(s.month) + '-' + pad(s.day) + 'T' + pad(h24) + ':' + pad(s.minute);
-      var el = g(s.hiddenId); if (el) el.value = iso;
-    }
-
-    /* ── Helpers ──────────────────────────────────────────── */
-    function g(id) { return document.getElementById(id); }
-    function setText(id, txt) { var el = g(id); if (el) el.textContent = txt; }
-
-    /* ── Close on outside click ───────────────────────────── */
-    document.addEventListener('click', function(e) {
-      if (!e.target.closest('.mdtp-block')) {
-        Object.keys(P).forEach(function(id) { mdtpClose(id); });
-      }
-    });
-
-    /* ── Expose globally for inline onclick attrs ─────────── */
-    window.mdtpOpen     = mdtpOpen;
-    window.mdtpClose    = mdtpClose;
-    window.mdtpSave     = mdtpSave;
-    window.mdtpNow      = mdtpNow;
-    window.mdtpMode     = mdtpMode;
-    window.mdtpPrev     = mdtpPrev;
-    window.mdtpNext     = mdtpNext;
-    window.mdtpDay      = mdtpDay;
-    window.mdtpHour     = mdtpHour;
-    window.mdtpSetAM    = mdtpSetAM;
-    window.mdtpMinChange = mdtpMinChange;
-
-    /* ── Bootstrap ────────────────────────────────────────── */
-    var isoStart = (g('voting_start') || {}).value || '';
-    var isoEnd   = (g('voting_end')   || {}).value || '';
-
-    // End defaults to tomorrow at same time
-    if (!isoEnd) {
-      var tom = new Date(); tom.setDate(tom.getDate() + 1);
-      isoEnd = tom.getFullYear() + '-' + pad(tom.getMonth() + 1) + '-' +
-               pad(tom.getDate()) + 'T' + pad(tom.getHours()) + ':' + pad(tom.getMinutes());
-    }
-
-    initPicker('start', 'voting_start', isoStart);
-    initPicker('end',   'voting_end',   isoEnd);
-
-  })();
+  });
 </script>
 {% endblock %}
 

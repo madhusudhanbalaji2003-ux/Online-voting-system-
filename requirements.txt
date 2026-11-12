@@ -5,3 +5,4 @@ mediapipe>=0.10.30
 numpy==2.2.6
 Pillow==11.2.1
 APScheduler>=3.10.4
+python-dotenv>=1.0.0

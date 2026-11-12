@@ -8,15 +8,25 @@ import csv
 import hashlib
 import io
 import os
-import random
+import secrets
 import smtplib
 import sqlite3
 import string
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.image import MIMEImage
 from functools import wraps
+from math import ceil
+from typing import Tuple
+
+# Load .env file if python-dotenv is installed
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass  # python-dotenv not installed; rely on system environment variables
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -28,6 +38,7 @@ from flask import (Flask, flash, jsonify, redirect, render_template, request,
 from blockchain import Blockchain
 from face_utils import (analyze_liveness_frames, compare_faces,
                         decode_base64_image, deserialize_encoding,
+                        detect_face_core, detect_face_in_frame,
                         find_duplicate_face, get_face_encoding,
                         save_face_image, serialize_encoding)
 
@@ -52,6 +63,8 @@ SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "")
 SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
+OTP_EXPIRY_SECONDS = 120
+OTP_RESEND_COOLDOWN_SECONDS = 60
 
 # Admin credentials
 ADMIN_USERNAME = "admin"
@@ -103,10 +116,12 @@ def init_db():
         CREATE TABLE IF NOT EXISTS otps (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT NOT NULL,
-            otp TEXT NOT NULL,
+            otp_hash TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             expires_at TIMESTAMP,
-            used INTEGER DEFAULT 0
+            used INTEGER DEFAULT 0,
+            attempts INTEGER DEFAULT 0,
+            resent_at TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS elections (
@@ -189,6 +204,44 @@ def init_db():
         );
     """)
 
+    # ── Migrate OTP table: rename otp → otp_hash, add attempts + resent_at ──
+    # Check which columns exist in the otps table
+    otp_cols = [row[1] for row in cursor.execute("PRAGMA table_info(otps)").fetchall()]
+
+    # If old plain-text 'otp' column exists and new 'otp_hash' doesn't, migrate
+    if "otp" in otp_cols and "otp_hash" not in otp_cols:
+        # SQLite doesn't support RENAME COLUMN before v3.25; safest: recreate table
+        cursor.executescript("""
+            CREATE TABLE IF NOT EXISTS otps_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                email TEXT NOT NULL,
+                otp_hash TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP,
+                used INTEGER DEFAULT 0,
+                attempts INTEGER DEFAULT 0,
+                resent_at TIMESTAMP
+            );
+            INSERT INTO otps_new (id, email, otp_hash, created_at, expires_at, used)
+                SELECT id, email, otp, created_at, expires_at, used FROM otps;
+            DROP TABLE otps;
+            ALTER TABLE otps_new RENAME TO otps;
+        """)
+
+    # Add any missing columns to the already-correct otps table
+    for col_def in (
+        ("attempts", "INTEGER DEFAULT 0"),
+        ("resent_at", "TIMESTAMP"),
+    ):
+        col_name, col_type = col_def
+        if col_name not in otp_cols and "otp_hash" in otp_cols:
+            try:
+                cursor.execute(f"ALTER TABLE otps ADD COLUMN {col_name} {col_type}")
+                conn.commit()
+            except Exception:
+                pass  # Already exists
+    # ─────────────────────────────────────────────────────────────────────────
+
     conn.commit()
     conn.close()
 
@@ -201,8 +254,47 @@ init_db()
 # Helpers
 # ──────────────────────────────────────────────
 def generate_otp(length=6):
-    """Generate a random numeric OTP."""
-    return "".join(random.choices(string.digits, k=length))
+    """Generate a cryptographically secure random 6-digit OTP using secrets module."""
+    return "".join(secrets.choice(string.digits) for _ in range(length))
+
+
+def hash_otp(otp: str) -> str:
+    """Return a SHA-256 hex digest of the OTP so we never store plaintext OTPs."""
+    return hashlib.sha256(otp.encode()).hexdigest()
+
+
+def otp_timer_seconds(created_at: str, expires_at: str) -> Tuple[int, int]:
+    """Return the OTP expiry and resend cooldown durations remaining.
+
+    Both created_at and expires_at are stored as local-time naive datetimes,
+    so we always compare against datetime.now() (local) — never UTC — to
+    avoid a timezone-offset mismatch that inflates the displayed wait time.
+    """
+    now = datetime.now()
+    expires_remaining = max(
+        0,
+        int((datetime.fromisoformat(expires_at) - now).total_seconds())
+    )
+    resend_remaining = max(
+        0,
+        int((
+            datetime.fromisoformat(created_at)
+            + timedelta(seconds=OTP_RESEND_COOLDOWN_SECONDS)
+            - now
+        ).total_seconds())
+    )
+    return expires_remaining, resend_remaining
+
+
+def mask_email(email: str) -> str:
+    """Return a privacy-masked version of an email address.
+    E.g. 'john.doe@example.com' -> 'jo***@example.com'
+    """
+    if "@" not in email:
+        return "***"
+    local, domain = email.rsplit("@", 1)
+    visible = local[:2] if len(local) >= 2 else local[:1]
+    return f"{visible}***@{domain}"
 
 
 def send_otp_email(email, otp):
@@ -226,7 +318,7 @@ def send_otp_email(email, otp):
                 <div style="font-size: 36px; font-weight: bold; color: #a78bfa; letter-spacing: 8px; text-align: center; padding: 24px; background: #16213e; border-radius: 12px; margin: 24px 0;">
                     {otp}
                 </div>
-                <p style="color: #666; font-size: 13px;">This code expires in 5 minutes. Do not share it with anyone.</p>
+                <p style="color: #666; font-size: 13px;">This code expires in 2 minutes. Do not share it with anyone.</p>
             </div>
         </body>
         </html>
@@ -400,7 +492,7 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
 
     try:
         msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🎉 SecureVote — Thank You for Voting!"
+        msg["Subject"] = "✅ SecureVote — Successfully Voted! Thank You for Participating."
         msg["From"] = SMTP_EMAIL
         msg["To"] = email
 
@@ -444,6 +536,10 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
 
                     <h1 style="margin:0 0 8px;font-size:2rem;font-weight:800;
                                color:#ffffff;letter-spacing:-0.02em;">Congratulations!</h1>
+                    <p style="margin:0 0 12px;font-size:1.25rem;font-weight:700;
+                               color:#34d399;letter-spacing:0.01em;">
+                      ✅ Successful voting is done by you.
+                    </p>
                     <p style="margin:0;font-size:1rem;color:#94a3b8;line-height:1.5;">
                       You have successfully cast your vote in<br>
                       <strong style="color:#c4b5fd;">{election_title}</strong>
@@ -565,6 +661,176 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
         return True
     except Exception as e:
         print(f"Vote acknowledgement email error for {email}: {e}")
+        return False
+
+
+def send_certificate_email(email: str, voter_name: str, election_title: str,
+                           voted_at: str, block_hash: str, png_bytes: bytes) -> bool:
+    """Email the voter's 'I Voted' certificate PNG as an attachment."""
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print(f"[DEV MODE] Certificate email skipped for {email} (no SMTP config).")
+        return True
+
+    try:
+        # Outer container: mixed so we can embed HTML body + image attachment
+        outer = MIMEMultipart("mixed")
+        outer["Subject"] = "🏅 SecureVote — Your Official Voting Certificate"
+        outer["From"]    = SMTP_EMAIL
+        outer["To"]      = email
+
+        # ── HTML body (alternative: plain-text fallback + rich HTML) ──
+        alt = MIMEMultipart("alternative")
+
+        plain_text = (
+            f"Dear {voter_name},\n\n"
+            "Thank you for voting! Please find your official 'I Voted' certificate attached.\n\n"
+            f"Election : {election_title}\n"
+            f"Voted on : {voted_at}\n"
+            f"Block Hash: {block_hash}\n\n"
+            "— SecureVote"
+        )
+        alt.attach(MIMEText(plain_text, "plain"))
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html lang="en">
+        <head><meta charset="UTF-8"></head>
+        <body style="margin:0;padding:0;background:#0a0a14;font-family:'Segoe UI',Arial,sans-serif;">
+          <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                 style="background:#0a0a14;padding:40px 16px;">
+            <tr><td align="center">
+              <table width="520" cellpadding="0" cellspacing="0" border="0"
+                     style="max-width:520px;background:#0f0f1e;border-radius:20px;
+                            border:1px solid #1e1e38;box-shadow:0 24px 64px rgba(0,0,0,.6);">
+
+                <!-- Top accent bar -->
+                <tr>
+                  <td style="height:4px;background:linear-gradient(90deg,#34d399,#38bdf8,#a78bfa);
+                              border-radius:20px 20px 0 0;"></td>
+                </tr>
+
+                <!-- Header -->
+                <tr>
+                  <td align="center" style="padding:36px 40px 20px;">
+                    <div style="width:80px;height:80px;border-radius:50%;
+                                background:linear-gradient(135deg,#34d399,#38bdf8);
+                                display:inline-flex;align-items:center;justify-content:center;
+                                box-shadow:0 0 0 12px rgba(52,211,153,.1),
+                                           0 12px 32px rgba(52,211,153,.35);
+                                margin-bottom:20px;">
+                      <span style="font-size:36px;line-height:1;">🏅</span>
+                    </div>
+                    <h1 style="margin:0 0 6px;font-size:1.8rem;font-weight:800;
+                               color:#fff;letter-spacing:-0.02em;">
+                      Your Voting Certificate
+                    </h1>
+                    <p style="margin:0;font-size:0.95rem;color:#94a3b8;">
+                      Official acknowledgement of your participation in<br>
+                      <strong style="color:#c4b5fd;">{election_title}</strong>
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Body -->
+                <tr>
+                  <td style="padding:0 40px 20px;">
+                    <p style="margin:0 0 6px;color:#e2e8f0;">
+                      Dear <strong style="color:#fff;">{voter_name}</strong>,
+                    </p>
+                    <p style="margin:0;font-size:0.9rem;color:#94a3b8;line-height:1.65;">
+                      Your official <strong style="color:#34d399;">&#8220;I Voted&#8221;</strong>
+                      certificate is attached to this email as a PNG image.
+                      You can save it, print it, or share it as proof of your participation.
+                    </p>
+                  </td>
+                </tr>
+
+                <!-- Details card -->
+                <tr>
+                  <td style="padding:0 40px 24px;">
+                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                           style="background:linear-gradient(135deg,rgba(52,211,153,.08),rgba(56,189,248,.06));
+                                  border:1px solid rgba(52,211,153,.3);border-radius:14px;padding:18px 22px;">
+                      <tr>
+                        <td>
+                          <div style="font-size:0.65rem;font-weight:800;text-transform:uppercase;
+                                      letter-spacing:2px;color:#34d399;margin-bottom:6px;">
+                            &#128336;&nbsp; Voted On
+                          </div>
+                          <div style="font-size:1rem;font-weight:700;color:#fff;line-height:1.3;">
+                            {voted_at}
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+
+                <!-- Hash -->
+                <tr>
+                  <td style="padding:0 40px 32px;">
+                    <div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;
+                                letter-spacing:1.5px;color:#64748b;margin-bottom:6px;">
+                      &#128279;&nbsp; Blockchain Receipt
+                    </div>
+                    <div style="font-family:'Courier New',monospace;font-size:0.68rem;
+                                color:#a78bfa;word-break:break-all;line-height:1.55;
+                                background:rgba(124,58,237,.07);
+                                border:1px solid rgba(124,58,237,.2);
+                                border-radius:8px;padding:10px 12px;">
+                      {block_hash}
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Privacy pill -->
+                <tr>
+                  <td align="center" style="padding:0 40px 28px;">
+                    <div style="display:inline-block;background:rgba(167,139,250,.07);
+                                border:1px solid rgba(167,139,250,.22);border-radius:9999px;
+                                padding:9px 18px;font-size:0.8rem;color:#c4b5fd;">
+                      &#128274;&nbsp; Your ballot choice remains completely private.
+                    </div>
+                  </td>
+                </tr>
+
+                <!-- Footer -->
+                <tr>
+                  <td style="padding:16px 40px 28px;border-top:1px solid #1e1e38;">
+                    <p style="margin:0;font-size:0.72rem;color:#475569;text-align:center;line-height:1.5;">
+                      This is an automated message from <strong>SecureVote</strong>.
+                      Please do not reply to this email.
+                    </p>
+                  </td>
+                </tr>
+
+              </table>
+            </td></tr>
+          </table>
+        </body>
+        </html>
+        """
+        alt.attach(MIMEText(html_body, "html"))
+        outer.attach(alt)
+
+        # ── PNG certificate attachment ──
+        img_part = MIMEImage(png_bytes, _subtype="png")
+        img_part.add_header(
+            "Content-Disposition",
+            "attachment",
+            filename="SecureVote_Certificate.png"
+        )
+        outer.attach(img_part)
+
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+            server.starttls()
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.send_message(outer)
+
+        return True
+
+    except Exception as exc:
+        print(f"Certificate email error for {email}: {exc}")
         return False
 
 
@@ -729,7 +995,7 @@ def register():
     encoding = get_face_encoding(face_array)
     if encoding is None:
         conn.close()
-        return jsonify({"success": False, "message": "No face detected in the image. Please try again with better lighting."}), 400
+        return jsonify({"success": False, "message": "⚠️ Could not extract face features. Please retake your photo — ensure your face is clearly visible, well-lit, and centred in the frame."}), 400
 
     # ── Duplicate face check ──────────────────────────────────────────────────
     # Fetch all registered face encodings and compare against the new face.
@@ -795,69 +1061,229 @@ def login():
         conn.close()
         return jsonify({"success": False, "message": "No registered voter found with these credentials."}), 404
 
-    # Generate and store OTP
-    otp = generate_otp()
-    expires_at = (datetime.now() + timedelta(minutes=5)).isoformat()
+    # ── Rate limiting: enforce the resend cooldown ────────────────────────────
+    last_otp = conn.execute(
+        "SELECT created_at FROM otps WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+        (email,)
+    ).fetchone()
+    if last_otp:
+        last_sent = datetime.fromisoformat(last_otp["created_at"])
+        seconds_since = (
+            datetime.now() - last_sent
+        ).total_seconds()
+        if seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
+            conn.close()
+            wait = max(1, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since))
+            return jsonify({
+                "success": False,
+                "message": f"Please wait {wait} second(s) before requesting a new OTP."
+            }), 429
+    # ─────────────────────────────────────────────────────────────────────────
 
+    # Generate a cryptographically secure OTP and store its hash (never plaintext)
+    otp = generate_otp()
+    otp_hash = hash_otp(otp)
+    created_at = datetime.now()
+    expires_at = (datetime.now() + timedelta(seconds=OTP_EXPIRY_SECONDS)).isoformat()
+
+    # Invalidate all previous unused OTPs for this email
     conn.execute(
-        "INSERT INTO otps (email, otp, expires_at) VALUES (?, ?, ?)",
-        (email, otp, expires_at)
+        "UPDATE otps SET used = 1 WHERE email = ? AND used = 0",
+        (email,)
+    )
+    # Insert new OTP record (storing hash, not plaintext)
+    conn.execute(
+        "INSERT INTO otps (email, otp_hash, created_at, expires_at, attempts) VALUES (?, ?, ?, ?, 0)",
+        (email, otp_hash, created_at.isoformat(), expires_at)
     )
     conn.commit()
     conn.close()
 
-    # Send OTP
+    # Send OTP via Gmail SMTP — if sending fails, do NOT pretend it succeeded
     if send_otp_email(email, otp):
         session["pending_email"] = email
         session["pending_voter_id"] = voter_id
-        return jsonify({"success": True, "message": "OTP sent to your email!", "redirect": url_for("verify_otp")})
+        masked = mask_email(email)
+        return jsonify({
+            "success": True,
+            "message": f"OTP sent to {masked}. It expires in 2 minutes.",
+            "redirect": url_for("verify_otp")
+        })
     else:
-        return jsonify({"success": False, "message": "Failed to send OTP. Please try again."}), 500
+        # Roll back the OTP record so user can try again
+        try:
+            conn2 = get_db()
+            conn2.execute(
+                "UPDATE otps SET used = 1 WHERE email = ? AND used = 0",
+                (email,)
+            )
+            conn2.commit()
+            conn2.close()
+        except Exception:
+            pass
+        return jsonify({
+            "success": False,
+            "message": "Failed to send OTP email. Please check your Gmail configuration or try again later."
+        }), 500
+
+
+@app.route("/resend-otp", methods=["POST"])
+def resend_otp():
+    """Resend OTP to the pending email (subject to 60-second cooldown)."""
+    email = session.get("pending_email")
+    if not email:
+        return jsonify({"success": False, "message": "Session expired. Please log in again."}), 401
+
+    conn = get_db()
+
+    # Enforce the resend cooldown
+    last_otp = conn.execute(
+        "SELECT created_at FROM otps WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+        (email,)
+    ).fetchone()
+    if last_otp:
+        last_sent = datetime.fromisoformat(last_otp["created_at"])
+        seconds_since = (
+            datetime.now() - last_sent
+        ).total_seconds()
+        if seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
+            conn.close()
+            wait = max(1, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since))
+            return jsonify({
+                "success": False,
+                "message": f"Please wait {wait} second(s) before requesting a new OTP.",
+                "wait": wait
+            }), 429
+
+    # Generate new OTP, invalidate old ones
+    otp = generate_otp()
+    otp_hash = hash_otp(otp)
+    created_at = datetime.now()
+    expires_at = (datetime.now() + timedelta(seconds=OTP_EXPIRY_SECONDS)).isoformat()
+
+    conn.execute("UPDATE otps SET used = 1 WHERE email = ? AND used = 0", (email,))
+    conn.execute(
+        "INSERT INTO otps (email, otp_hash, created_at, expires_at, attempts) VALUES (?, ?, ?, ?, 0)",
+        (email, otp_hash, created_at.isoformat(), expires_at)
+    )
+    conn.commit()
+    conn.close()
+
+    if send_otp_email(email, otp):
+        masked = mask_email(email)
+        expires_in, resend_in = otp_timer_seconds(created_at.isoformat(), expires_at)
+        return jsonify({
+            "success": True,
+            "message": f"New OTP sent to {masked}. It expires in 2 minutes.",
+            "expires_in": expires_in,
+            "resend_in": resend_in
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "message": "Failed to resend OTP. Please check your Gmail configuration."
+        }), 500
 
 
 @app.route("/verify-otp", methods=["GET", "POST"])
 def verify_otp():
-    """OTP verification page."""
+    """OTP verification page — validates hashed OTP with expiry and attempt limits."""
     if "pending_email" not in session:
         flash("Please log in first.", "warning")
         return redirect(url_for("login"))
 
+    email = session.get("pending_email")
+
     if request.method == "GET":
-        return render_template("verify_otp.html", email=session["pending_email"])
+        masked = mask_email(email)
+        conn = get_db()
+        record = conn.execute(
+            "SELECT created_at, expires_at FROM otps WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1",
+            (email,)
+        ).fetchone()
+        conn.close()
+        otp_remaining, resend_remaining = (
+            otp_timer_seconds(record["created_at"], record["expires_at"])
+            if record else (0, 0)
+        )
+        return render_template(
+            "verify_otp.html",
+            email=email,
+            masked_email=masked,
+            otp_remaining_seconds=otp_remaining,
+            resend_remaining_seconds=resend_remaining
+        )
 
     data = request.get_json()
     if not data:
         return jsonify({"success": False, "message": "Invalid request"}), 400
 
-    otp = data.get("otp", "").strip()
-    email = session.get("pending_email")
+    entered_otp = data.get("otp", "").strip()
 
-    if not otp:
-        return jsonify({"success": False, "message": "Please enter the OTP."}), 400
+    if not entered_otp or len(entered_otp) != 6 or not entered_otp.isdigit():
+        return jsonify({"success": False, "message": "Please enter a valid 6-digit OTP."}), 400
 
     conn = get_db()
+
+    # Fetch the latest unused OTP record for this email
     record = conn.execute(
-        "SELECT * FROM otps WHERE email = ? AND otp = ? AND used = 0 ORDER BY created_at DESC LIMIT 1",
-        (email, otp)
+        "SELECT * FROM otps WHERE email = ? AND used = 0 ORDER BY created_at DESC LIMIT 1",
+        (email,)
     ).fetchone()
 
     if not record:
         conn.close()
-        return jsonify({"success": False, "message": "Invalid OTP. Please try again."}), 400
+        return jsonify({"success": False, "message": "No active OTP found. Please request a new one."}), 400
 
-    # Check expiry
+    # ── Check attempt limit (max 5 wrong tries) ──────────────────────────────
+    MAX_ATTEMPTS = 5
+    current_attempts = record["attempts"] if record["attempts"] is not None else 0
+    if current_attempts >= MAX_ATTEMPTS:
+        conn.execute("UPDATE otps SET used = 1 WHERE id = ?", (record["id"],))
+        conn.commit()
+        conn.close()
+        return jsonify({
+            "success": False,
+            "message": "Too many incorrect attempts. This OTP has been invalidated. Please request a new one."
+        }), 429
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Verify OTP hash — never compare plaintext ────────────────────────────
+    entered_hash = hash_otp(entered_otp)
+    if entered_hash != record["otp_hash"]:
+        # Increment attempt counter
+        new_attempts = current_attempts + 1
+        conn.execute("UPDATE otps SET attempts = ? WHERE id = ?", (new_attempts, record["id"]))
+        conn.commit()
+        conn.close()
+        remaining = MAX_ATTEMPTS - new_attempts
+        if remaining <= 0:
+            return jsonify({
+                "success": False,
+                "message": "Incorrect OTP. No attempts remaining. Please request a new OTP."
+            }), 400
+        return jsonify({
+            "success": False,
+            "message": f"Incorrect OTP. {remaining} attempt(s) remaining."
+        }), 400
+    # ─────────────────────────────────────────────────────────────────────────
+
+    # ── Check OTP expiry ─────────────────────────────────────────────────────
     expires_at = datetime.fromisoformat(record["expires_at"])
     if datetime.now() > expires_at:
+        conn.execute("UPDATE otps SET used = 1 WHERE id = ?", (record["id"],))
+        conn.commit()
         conn.close()
         return jsonify({"success": False, "message": "OTP has expired. Please request a new one."}), 400
+    # ─────────────────────────────────────────────────────────────────────────
 
-    # Mark OTP as used
+    # ── OTP is valid — mark as used so it cannot be reused ──────────────────
     conn.execute("UPDATE otps SET used = 1 WHERE id = ?", (record["id"],))
     conn.commit()
     conn.close()
 
     session["otp_verified"] = True
-    return jsonify({"success": True, "message": "OTP verified!", "redirect": url_for("verify_face")})
+    return jsonify({"success": True, "message": "OTP verified successfully!", "redirect": url_for("verify_face")})
 
 
 @app.route("/verify-face", methods=["GET", "POST"])
@@ -1045,8 +1471,12 @@ def vote():
     voted_at_str = datetime.now().strftime("%A, %d %B %Y at %I:%M:%S %p")
     session["vote_block_hash"] = block.hash
     session["voted_at"] = voted_at_str
+    session["voted_voter_name"] = voter["name"]
+    session["voted_election_title"] = election["title"]
+    # Store voter_email in session so vote_success page and certificate email endpoint can use it
+    session["voter_email"] = email
 
-    # Send congratulations acknowledgement email to the voter (in background thread)
+    # Send "Successful voting is done by you." acknowledgement email to the voter (in background thread)
     import threading
     threading.Thread(
         target=send_vote_acknowledgement_email,
@@ -1070,17 +1500,73 @@ def vote():
 
 @app.route("/vote-success")
 def vote_success():
-    """Vote confirmation page — shows congratulations with timestamp only."""
-    block_hash = session.get("vote_block_hash", "N/A")
-    voted_at   = session.get("voted_at", datetime.now().strftime("%A, %d %B %Y at %I:%M:%S %p"))
+    """Vote confirmation page — shows congratulations with timestamp, certificate, and email notice."""
+    block_hash     = session.get("vote_block_hash", "N/A")
+    voted_at       = session.get("voted_at", datetime.now().strftime("%A, %d %B %Y at %I:%M:%S %p"))
+    voter_name     = session.get("voted_voter_name", "Voter")
+    election_title = session.get("voted_election_title", "General Election")
+    voter_email    = session.get("voter_email", "")
+    masked_email   = mask_email(voter_email) if voter_email else "your registered email"
+    # Acknowledgement flash message shown via the general alert template
+    flash("Successfully voted.", "success")
     # Deliberately do NOT pass candidate name — the page must not reveal who was voted for
-    return render_template("success.html", block_hash=block_hash, voted_at=voted_at)
+    return render_template(
+        "success.html",
+        block_hash=block_hash,
+        voted_at=voted_at,
+        voter_name=voter_name,
+        election_title=election_title,
+        masked_email=masked_email,
+    )
 
 
 @app.route("/already-voted")
 def already_voted():
     """Page shown when voter has already voted."""
     return render_template("already_voted.html")
+
+
+@app.route("/api/email-certificate", methods=["POST"])
+def api_email_certificate():
+    """Receive the canvas PNG (base64) from the client and email it as an attachment.
+
+    NOTE: intentionally NOT decorated with @login_required because that decorator
+    issues an HTML redirect on session-miss, which breaks the JSON fetch call.
+    Session validation is handled inline below, returning proper JSON errors.
+    """
+    # ── Session check (returns JSON, never a redirect) ──
+    voter_email = session.get("voter_email", "")
+    if not voter_email:
+        return jsonify({
+            "success": False,
+            "message": "Session expired. Please log in again to receive the certificate."
+        }), 401
+
+    data = request.get_json(silent=True)
+    if not data or "image_data" not in data:
+        return jsonify({"success": False, "message": "No image data provided."}), 400
+
+    # Strip the data-URL prefix produced by canvas.toDataURL()
+    img_b64 = data["image_data"]
+    if img_b64.startswith("data:image/png;base64,"):
+        img_b64 = img_b64[len("data:image/png;base64,"):]
+
+    try:
+        png_bytes = base64.b64decode(img_b64)
+    except Exception:
+        return jsonify({"success": False, "message": "Invalid image data."}), 400
+
+    voter_name     = session.get("voted_voter_name",     "Voter")
+    election_title = session.get("voted_election_title", "General Election")
+    voted_at       = session.get("voted_at",             "")
+    block_hash     = session.get("vote_block_hash",      "")
+
+    ok = send_certificate_email(
+        voter_email, voter_name, election_title, voted_at, block_hash, png_bytes
+    )
+    if ok:
+        return jsonify({"success": True,  "message": "Certificate emailed successfully!"})
+    return jsonify({"success": False, "message": "Failed to send certificate email."}), 500
 
 
 @app.route("/voting-closed")
@@ -1625,6 +2111,7 @@ def api_blockchain_status():
 
 @app.route("/api/results")
 def api_results():
+
     """Get election results as JSON — only when admin has made them visible."""
     conn = get_db()
     election = conn.execute("SELECT * FROM elections WHERE is_active = 1 LIMIT 1").fetchone()
@@ -1657,6 +2144,45 @@ def api_results():
         "election": election["title"],
         "total_votes": total_votes,
         "results": sorted(results, key=lambda x: x["votes"], reverse=True)
+    })
+
+
+# ──────────────────────────────────────────────
+# Face Detection API — Human Presence Check + Bounding Box
+# ──────────────────────────────────────────────
+@app.route("/detect_face", methods=["POST"])
+def detect_face():
+    """
+    Lightweight endpoint: accepts a single base64-encoded frame and returns
+    whether a human face is present, plus the bounding box (x,y,w,h) so the
+    frontend can draw a real-time face-lock overlay on the camera feed.
+    """
+    data = request.get_json(silent=True) or {}
+    frame_b64 = data.get("face_image", "")
+
+    if not frame_b64:
+        return jsonify({"face_detected": False, "message": "No image data provided."}), 400
+
+    image = decode_base64_image(frame_b64)
+    if image is None:
+        return jsonify({"face_detected": False, "message": "Could not decode image."}), 400
+
+    # Use detect_face_core to also get the bounding box for overlay drawing
+    bgr_img, face_row = detect_face_core(image)
+
+    if face_row is None:
+        return jsonify({
+            "face_detected": False,
+            "face_box": None,
+            "message": "No human face detected. Please face the camera directly."
+        })
+
+    # Return bounding box as {x, y, w, h} integers for JS overlay drawing
+    x, y, w, h = [max(0, int(v)) for v in face_row[:4]]
+    return jsonify({
+        "face_detected": True,
+        "face_box": {"x": x, "y": y, "w": w, "h": h},
+        "message": "Human face detected."
     })
 
 

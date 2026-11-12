@@ -1,0 +1,289 @@
+{% extends "base.html" %}
+{% block title %}Face Verification — SecureVote{% endblock %}
+
+{% block content %}
+<div class="container-sm fade-in">
+
+    <div class="card">
+        <div class="card-header">
+            <h2>Face Verification</h2>
+            <p>Complete face recognition and liveness detection to proceed to voting.</p>
+        </div>
+        <div id="alert-box"></div>
+
+        <!-- Phase 1: Face Recognition -->
+        <div id="phase-face">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--accent-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.85rem;">Step 1 — Face Recognition</div>
+            <div class="webcam-container" id="webcam-box" style="display:none;position:relative;">
+                <video id="video" autoplay playsinline></video>
+                <div class="webcam-overlay"><div class="face-guide"></div></div>
+                <!-- Live human-detection status badge -->
+                <div id="face-status-badge" style="
+                    position:absolute;top:12px;left:50%;transform:translateX(-50%);
+                    padding:6px 16px;border-radius:999px;font-size:0.78rem;font-weight:700;
+                    letter-spacing:0.04em;white-space:nowrap;
+                    background:rgba(239,68,68,0.85);color:#fff;
+                    box-shadow:0 2px 12px rgba(0,0,0,0.5);
+                    transition:background 0.3s,color 0.3s;
+                    pointer-events:none;z-index:10;">
+                    🔍 Looking for face…
+                </div>
+            </div>
+            <canvas id="canvas" style="display:none;"></canvas>
+            <div style="margin-top:12px;display:flex;gap:10px;justify-content:center;">
+                <button class="btn btn-outline" id="startCamBtn" onclick="startCamera()">Start Camera</button>
+                <button class="btn btn-primary" id="matchBtn" style="display:none;" onclick="matchFace()">Verify Face</button>
+            </div>
+        </div>
+
+        <!-- Phase 2: Liveness Detection -->
+        <div id="phase-liveness" style="display:none;">
+            <div style="font-size:0.78rem;font-weight:700;color:var(--accent-light);text-transform:uppercase;letter-spacing:1px;margin-bottom:0.85rem;">Step 2 — Liveness Detection</div>
+            <p style="color:var(--text-secondary);font-size:0.85rem;margin-bottom:1rem;text-align:center;">
+                Please <strong>blink naturally</strong> while looking at the camera. This confirms you are a real person.
+            </p>
+            <div class="webcam-container">
+                <video id="liveness-video" autoplay playsinline></video>
+            </div>
+            <canvas id="liveness-canvas" style="display:none;"></canvas>
+            <div style="margin-top:12px;text-align:center;">
+                <button class="btn btn-primary btn-lg" id="livenessBtn" onclick="startLiveness()">Start Blink Test</button>
+                <p id="liveness-status" style="color:var(--text-muted);font-size:0.85rem;margin-top:8px;"></p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let stream = null;
+let faceDetectionInterval = null;  // live polling timer
+let facePresent = false;           // whether a human face is currently visible
+
+// ── Live face detection polling ─────────────────────────────────────────────
+function startFacePolling() {
+    const badge = document.getElementById('face-status-badge');
+    const matchBtn = document.getElementById('matchBtn');
+
+    faceDetectionInterval = setInterval(async () => {
+        const video = document.getElementById('video');
+        if (!video || !video.videoWidth) return;
+
+        const canvas = document.getElementById('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        // No mirror flip — server handles both orientations
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const frameData = canvas.toDataURL('image/jpeg', 0.8);
+
+        try {
+            const res = await fetch('/detect_face', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ face_image: frameData })
+            });
+            const data = await res.json();
+            facePresent = data.face_detected;
+
+            if (facePresent) {
+                badge.style.background = 'rgba(16,185,129,0.9)';
+                badge.textContent = '✅ Human detected — ready to verify';
+                matchBtn.disabled = false;
+                matchBtn.style.opacity = '1';
+            } else {
+                badge.style.background = 'rgba(239,68,68,0.85)';
+                badge.textContent = '⚠️ No human detected — please face the camera';
+                matchBtn.disabled = true;
+                matchBtn.style.opacity = '0.5';
+            }
+        } catch (err) {
+            // Silent — keep previous state on transient errors
+        }
+    }, 700);
+}
+
+function stopFacePolling() {
+    if (faceDetectionInterval) {
+        clearInterval(faceDetectionInterval);
+        faceDetectionInterval = null;
+    }
+}
+// ────────────────────────────────────────────────────────────────────────────
+
+async function startCamera() {
+    try {
+        const constraints = {
+            video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        };
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (errConst) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        }
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        document.getElementById('webcam-box').style.display = 'block';
+        document.getElementById('startCamBtn').style.display = 'none';
+
+        const matchBtn = document.getElementById('matchBtn');
+        matchBtn.style.display = 'inline-flex';
+        matchBtn.disabled = true;
+        matchBtn.style.opacity = '0.5';
+
+        // Reset badge
+        const badge = document.getElementById('face-status-badge');
+        badge.style.background = 'rgba(239,68,68,0.85)';
+        badge.textContent = '🔍 Looking for face…';
+
+        // Begin polling once video is streaming
+        video.addEventListener('playing', () => { startFacePolling(); }, { once: true });
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Camera access denied.</div>';
+    }
+}
+
+async function matchFace() {
+    if (!facePresent) {
+        document.getElementById('alert-box').innerHTML =
+            '<div class="alert alert-danger">⚠️ No human face detected. Please position your face in front of the camera.</div>';
+        return;
+    }
+
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    ctx.save();
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    const imageData = canvas.toDataURL('image/jpeg', 0.9);
+
+    const btn = document.getElementById('matchBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Matching...';
+
+    // Stop live polling while we do the full verification
+    stopFacePolling();
+
+    try {
+        const res = await fetch('/verify-face', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'verify_face', face_image: imageData })
+        });
+        const result = await res.json();
+        if (result.success) {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+            if (stream) { stream.getTracks().forEach(t => t.stop()); }
+            document.getElementById('phase-face').style.display = 'none';
+            document.getElementById('phase-liveness').style.display = 'block';
+            startLivenessCamera();
+        } else {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = 'Verify Face';
+            // Resume polling so user can try again
+            startFacePolling();
+        }
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Network error.</div>';
+        btn.disabled = false;
+        btn.innerHTML = 'Verify Face';
+        startFacePolling();
+    }
+}
+
+async function startLivenessCamera() {
+    try {
+        const constraints = {
+            video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            }
+        };
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+        } catch (errConst) {
+            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } });
+        }
+        document.getElementById('liveness-video').srcObject = stream;
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Camera access denied for liveness.</div>';
+    }
+}
+
+async function startLiveness() {
+    const btn = document.getElementById('livenessBtn');
+    const status = document.getElementById('liveness-status');
+    btn.disabled = true;
+    status.innerHTML = 'Recording... Please blink naturally (3 seconds)';
+    status.style.animation = 'pulse 1s infinite';
+
+    const video = document.getElementById('liveness-video');
+    const canvas = document.getElementById('liveness-canvas');
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    const ctx = canvas.getContext('2d');
+    const frames = [];
+
+    await new Promise(resolve => {
+        let count = 0;
+        const interval = setInterval(() => {
+            ctx.save();
+            ctx.translate(canvas.width, 0);
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            ctx.restore();
+            frames.push(canvas.toDataURL('image/jpeg', 0.6));
+            count++;
+            if (count >= 15) { clearInterval(interval); resolve(); }
+        }, 200);
+    });
+
+    status.innerHTML = 'Analyzing liveness...';
+
+    try {
+        const res = await fetch('/verify-face', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'liveness_check', frames })
+        });
+        const result = await res.json();
+        if (result.success) {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-success">${result.message}</div>`;
+            status.innerHTML = 'Liveness verified — redirecting...';
+            status.style.animation = 'none';
+            if (stream) { stream.getTracks().forEach(t => t.stop()); }
+            setTimeout(() => {
+                if (window.smoothNavigate) {
+                    window.smoothNavigate('/vote');
+                } else {
+                    window.location.href = '/vote';
+                }
+            }, 1500);
+        } else {
+            document.getElementById('alert-box').innerHTML = `<div class="alert alert-danger">${result.message}</div>`;
+            status.innerHTML = 'Please try again — blink clearly.';
+            status.style.animation = 'none';
+            btn.disabled = false;
+            btn.innerHTML = 'Retry Blink Test';
+        }
+    } catch {
+        document.getElementById('alert-box').innerHTML = '<div class="alert alert-danger">Network error.</div>';
+        btn.disabled = false;
+        btn.innerHTML = 'Retry Blink Test';
+        status.style.animation = 'none';
+    }
+}
+</script>
+{% endblock %}

@@ -82,10 +82,8 @@ body {
   font-size: 1rem;
   font-weight: 400;
   position: relative;
-  background: radial-gradient(108.92% 108.92% at 51.55% 3.41%, rgba(255, 255, 255, 0.2) 0%, rgba(108, 142, 188, 0.2) 23.08%, rgba(9, 58, 143, 0.2) 50%, rgba(0, 0, 0, 0.2) 100%), #000000;
-  background-attachment: fixed;
-  background-repeat: no-repeat;
-  box-shadow: inset 0px 4px 4px rgba(0, 0, 0, 0.25);
+  background: #000000;
+  background-color: #000000;
   color: var(--text-primary);
   line-height: 1.6;
   min-height: 100vh;
@@ -98,8 +96,8 @@ body {
   position: relative;
   width: 1030px;
   height: 762px;
-  background: radial-gradient(108.92% 108.92% at 51.55% 3.41%, rgba(255, 255, 255, 0.2) 0%, rgba(108, 142, 188, 0.2) 23.08%, rgba(9, 58, 143, 0.2) 50%, rgba(0, 0, 0, 0.2) 100%), #000000;
-  box-shadow: inset 0px 4px 4px rgba(0, 0, 0, 0.25);
+  background: #000000;
+  background-color: #000000;
 }
 
 /* Rectangle 2 (Figma Component) */
@@ -157,12 +155,7 @@ body::before {
 
 /* ── Grain Overlay ── */
 .grain-overlay {
-  position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  pointer-events: none;
-  z-index: 9999;
-  opacity: 0.05;
-  background-image: url('data:image/svg+xml;utf8,%3Csvg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg"%3E%3Cfilter id="noiseFilter"%3E%3CfeTurbulence type="fractalNoise" baseFrequency="0.75" numOctaves="3" stitchTiles="stitch"/%3E%3C/filter%3E%3Crect width="100%25" height="100%25" filter="url(%23noiseFilter)"/%3E%3C/svg%3E');
+  display: none !important;
 }
 
 /* ── Hero & Stagger: "Secure, Transparent, Verifiable." ── */
@@ -1333,7 +1326,13 @@ button .span-mother2 span:nth-child(20), .btn .span-mother2 span:nth-child(20), 
   border-radius: var(--radius-lg); overflow: hidden;
   border: 2px solid var(--border);
 }
-.webcam-container video, .webcam-container canvas {
+.webcam-container video {
+  width: 100%; display: block; border-radius: var(--radius-lg);
+  background: #000;
+  transform: scaleX(-1);
+  -webkit-transform: scaleX(-1);
+}
+.webcam-container canvas {
   width: 100%; display: block; border-radius: var(--radius-lg);
   background: #000;
 }
@@ -2132,11 +2131,16 @@ body.page-leaving .fade-in {
   position: relative;
 }
 
-.voter-webcam-box video {
+.voter-webcam-box video,
+#video,
+#sec-video,
+#liveness-video {
   width: 100%;
   height: 220px;
   object-fit: cover;
   display: block;
+  transform: scaleX(-1);
+  -webkit-transform: scaleX(-1);
 }
 
 /* Register & Submit button */
