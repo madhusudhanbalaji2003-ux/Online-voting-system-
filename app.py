@@ -21,12 +21,35 @@ from functools import wraps
 from math import ceil
 from typing import Tuple
 
-# Load .env file if python-dotenv is installed
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass  # python-dotenv not installed; rely on system environment variables
+# Load .env file (uses python-dotenv if available, with built-in fallback)
+_ENV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+
+
+def _load_env_file(env_path: str = _ENV_PATH) -> None:
+    """Load key=value pairs from .env into os.environ without requiring external packages."""
+    loaded_via_dotenv = False
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(dotenv_path=env_path, override=True)
+        loaded_via_dotenv = True
+    except ImportError:
+        pass
+
+    if not loaded_via_dotenv and os.path.isfile(env_path):
+        with open(env_path, "r", encoding="utf-8") as fh:
+            for raw_line in fh:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip()
+                if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
+                    value = value[1:-1]
+                os.environ[key] = value
+
+
+_load_env_file()
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
@@ -59,12 +82,56 @@ os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 # Email Configuration (Gmail SMTP)
 # Set these environment variables or modify directly
 # ──────────────────────────────────────────────
-SMTP_EMAIL = os.environ.get("SMTP_EMAIL", "")
-SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD", "")
+def _normalize_smtp_password(password: str, server: str) -> str:
+    """Strip quotes/whitespace and remove grouping spaces from Gmail App Passwords."""
+    cleaned = password.strip()
+    if server == "smtp.gmail.com":
+        compact = cleaned.replace(" ", "")
+        if len(compact) == 16:
+            return compact
+    return cleaned
+
+
+def _get_smtp_credentials() -> Tuple[str, str]:
+    """Return configured (smtp_email, smtp_password), reloading .env if empty."""
+    email_val = os.environ.get("SMTP_EMAIL", "").strip()
+    pass_val = _normalize_smtp_password(os.environ.get("SMTP_PASSWORD", ""), SMTP_SERVER)
+    if not email_val or not pass_val:
+        _load_env_file()
+        email_val = os.environ.get("SMTP_EMAIL", "").strip()
+        pass_val = _normalize_smtp_password(os.environ.get("SMTP_PASSWORD", ""), SMTP_SERVER)
+    return email_val, pass_val
+
+
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
+SMTP_EMAIL, SMTP_PASSWORD = _get_smtp_credentials()
 OTP_EXPIRY_SECONDS = 120
 OTP_RESEND_COOLDOWN_SECONDS = 60
+
+
+def _send_smtp_message(msg) -> None:
+    """Send a MIME email via STARTTLS (587) with automatic SSL (465) fallback."""
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
+        raise RuntimeError("SMTP credentials are not configured.")
+
+    if not msg["From"]:
+        msg["From"] = smtp_email
+
+    try:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
+    except (OSError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
+        # Fallback to implicit SSL on port 465 if port 587 STARTTLS is blocked
+        with smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=15) as server:
+            server.ehlo()
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
 
 # Admin credentials
 ADMIN_USERNAME = "admin"
@@ -299,16 +366,22 @@ def mask_email(email: str) -> str:
 
 def send_otp_email(email, otp):
     """Send OTP via email using Gmail SMTP."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
         print(f"[DEV MODE] OTP for {email}: {otp}")
         return True  # Dev mode — skip email
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "🔐 SecureVote — Your OTP Verification Code"
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = f"SecureVote <{smtp_email}>"
         msg["To"] = email
 
+        plain = (
+            f"SecureVote Verification Code\n\n"
+            f"Your one-time verification code is: {otp}\n\n"
+            f"This code expires in 2 minutes. Do not share it with anyone."
+        )
         html = f"""
         <html>
         <body style="font-family: 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; padding: 40px;">
@@ -323,29 +396,31 @@ def send_otp_email(email, otp):
         </body>
         </html>
         """
+        msg.attach(MIMEText(plain, "plain"))
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
-
+        _send_smtp_message(msg)
+        print(f"[MAIL] OTP email sent to {email}")
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[MAIL ERROR] Gmail authentication failed: {e}. Check SMTP_EMAIL and 16-char Google App Password in .env.")
+        return False
     except Exception as e:
-        print(f"Email send error: {e}")
+        print(f"[MAIL ERROR] Email send error for {email}: {e}")
         return False
 
 
 def send_voting_start_notification(email, voter_name, election_title):
     """Send 'Voting has started NOW!' email to a single voter."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
         print(f"[DEV MODE] Voting-start notification for {email}: {election_title}")
         return True
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"🗳️ SecureVote — Voting is NOW OPEN: {election_title}"
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = f"SecureVote <{smtp_email}>"
         msg["To"] = email
 
         html = f"""
@@ -379,10 +454,7 @@ def send_voting_start_notification(email, voter_name, election_title):
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
+        _send_smtp_message(msg)
         return True
     except Exception as e:
         print(f"Voting-start notification error for {email}: {e}")
@@ -431,14 +503,15 @@ def schedule_voting_start_job(election_id, start_dt):
 
 def send_announcement_email(email, voter_name, election_title, start_dt, end_dt):
     """Send voting announcement email to a single voter."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
         print(f"[DEV MODE] Announcement for {email}: {election_title} starts {start_dt}")
         return True
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"📢 SecureVote — Voting Announcement: {election_title}"
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = f"SecureVote <{smtp_email}>"
         msg["To"] = email
 
         start_str = start_dt.strftime("%d %B %Y at %I:%M %p")
@@ -474,10 +547,7 @@ def send_announcement_email(email, voter_name, election_title, start_dt, end_dt)
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
+        _send_smtp_message(msg)
         return True
     except Exception as e:
         print(f"Announcement email error for {email}: {e}")
@@ -486,14 +556,15 @@ def send_announcement_email(email, voter_name, election_title, start_dt, end_dt)
 
 def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, election_title):
     """Send a congratulations acknowledgement email to the voter after successful voting."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
         print(f"[DEV MODE] Vote acknowledgement for {email} — voted at {voted_at}")
         return True
 
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "✅ SecureVote — Successfully Voted! Thank You for Participating."
-        msg["From"] = SMTP_EMAIL
+        msg["From"] = f"SecureVote <{smtp_email}>"
         msg["To"] = email
 
         html = f"""
@@ -654,10 +725,7 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
         """
         msg.attach(MIMEText(html, "html"))
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(msg)
+        _send_smtp_message(msg)
         return True
     except Exception as e:
         print(f"Vote acknowledgement email error for {email}: {e}")
@@ -667,7 +735,8 @@ def send_vote_acknowledgement_email(email, voter_name, voted_at, block_hash, ele
 def send_certificate_email(email: str, voter_name: str, election_title: str,
                            voted_at: str, block_hash: str, png_bytes: bytes) -> bool:
     """Email the voter's 'I Voted' certificate PNG as an attachment."""
-    if not SMTP_EMAIL or not SMTP_PASSWORD:
+    smtp_email, smtp_password = _get_smtp_credentials()
+    if not smtp_email or not smtp_password:
         print(f"[DEV MODE] Certificate email skipped for {email} (no SMTP config).")
         return True
 
@@ -675,7 +744,7 @@ def send_certificate_email(email: str, voter_name: str, election_title: str,
         # Outer container: mixed so we can embed HTML body + image attachment
         outer = MIMEMultipart("mixed")
         outer["Subject"] = "🏅 SecureVote — Your Official Voting Certificate"
-        outer["From"]    = SMTP_EMAIL
+        outer["From"]    = f"SecureVote <{smtp_email}>"
         outer["To"]      = email
 
         # ── HTML body (alternative: plain-text fallback + rich HTML) ──
@@ -822,10 +891,7 @@ def send_certificate_email(email: str, voter_name: str, election_title: str,
         )
         outer.attach(img_part)
 
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-            server.starttls()
-            server.login(SMTP_EMAIL, SMTP_PASSWORD)
-            server.send_message(outer)
+        _send_smtp_message(outer)
 
         return True
 
@@ -1053,13 +1119,16 @@ def login():
 
     conn = get_db()
     voter = conn.execute(
-        "SELECT * FROM voters WHERE email = ? AND voter_id = ?",
+        "SELECT * FROM voters WHERE LOWER(email) = LOWER(?) AND UPPER(voter_id) = UPPER(?)",
         (email, voter_id)
     ).fetchone()
 
     if not voter:
         conn.close()
         return jsonify({"success": False, "message": "No registered voter found with these credentials."}), 404
+
+    email = voter["email"]
+    voter_id = voter["voter_id"]
 
     # ── Rate limiting: enforce the resend cooldown ────────────────────────────
     last_otp = conn.execute(
@@ -2190,9 +2259,14 @@ def detect_face():
 # Run
 # ──────────────────────────────────────────────
 if __name__ == "__main__":
+    _smtp_email, _smtp_pass = _get_smtp_credentials()
     print("\n" + "=" * 60)
     print("  SecureVote - Online Voting System")
     print("  Face Recognition + Liveness + Blockchain")
+    if _smtp_email and _smtp_pass:
+        print(f"  Gmail SMTP: Active ({_smtp_email})")
+    else:
+        print("  Gmail SMTP: DEV MODE (set SMTP_EMAIL & SMTP_PASSWORD in .env)")
     print("  http://127.0.0.1:5000")
     print("=" * 60 + "\n")
     app.run(debug=True, host="127.0.0.1", port=5000)
