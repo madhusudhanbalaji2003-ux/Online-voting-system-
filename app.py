@@ -2267,6 +2267,8 @@ if __name__ == "__main__":
         print(f"  Gmail SMTP: Active ({_smtp_email})")
     else:
         print("  Gmail SMTP: DEV MODE (set SMTP_EMAIL & SMTP_PASSWORD in .env)")
-    print("  http://127.0.0.1:5000")
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1")
+    print(f"  http://0.0.0.0:{port}")
     print("=" * 60 + "\n")
-    app.run(debug=True, host="127.0.0.1", port=5000)
+    app.run(debug=debug_mode, host="0.0.0.0", port=port)
