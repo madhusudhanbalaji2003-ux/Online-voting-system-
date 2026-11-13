@@ -463,37 +463,75 @@ def mask_email(email: str) -> str:
     return f"{visible}***@{domain}"
 
 
+def _send_via_resend_api(to_email: str, subject: str, html_body: str, plain_body: str) -> bool:
+    """Send transactional email via Resend HTTPS API (Port 443) which is never blocked by cloud firewalls."""
+    api_key = os.environ.get("RESEND_API_KEY", "").strip()
+    if not api_key:
+        return False
+    import json
+    import urllib.request
+    try:
+        payload = json.dumps({
+            "from": "SecureVote <onboarding@resend.dev>",
+            "to": [to_email],
+            "subject": subject,
+            "html": html_body,
+            "text": plain_body
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "User-Agent": "SecureVote/1.0"
+            }
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            if resp.status in (200, 201):
+                print(f"[RESEND API] Email successfully delivered to {to_email} via HTTPS port 443.")
+                return True
+    except Exception as e:
+        print(f"[RESEND API ERROR] Failed to send via Resend: {e}")
+    return False
+
+
 def send_otp_email(email, otp) -> Tuple[bool, str]:
-    """Send OTP via email using Gmail SMTP. Returns (success, detail_message)."""
+    """Send OTP via email using Gmail SMTP or HTTPS API. Returns (success, detail_message)."""
     smtp_email, smtp_password = _get_smtp_credentials()
     if not smtp_email or not smtp_password:
         return False, "SMTP credentials are not configured"
 
+    plain = (
+        f"SecureVote Verification Code\n\n"
+        f"Your one-time verification code is: {otp}\n\n"
+        f"This code expires in 2 minutes. Do not share it with anyone."
+    )
+    html = f"""
+    <html>
+    <body style="font-family: 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; padding: 40px;">
+        <div style="max-width: 480px; margin: auto; background: #1a1a2e; border-radius: 16px; padding: 40px; border: 1px solid #16213e;">
+            <h2 style="color: #7c3aed; margin-bottom: 8px;">🔐 SecureVote</h2>
+            <p style="color: #a0a0b8;">Your one-time verification code:</p>
+            <div style="font-size: 36px; font-weight: bold; color: #a78bfa; letter-spacing: 8px; text-align: center; padding: 24px; background: #16213e; border-radius: 12px; margin: 24px 0;">
+                {otp}
+            </div>
+            <p style="color: #666; font-size: 13px;">This code expires in 2 minutes. Do not share it with anyone.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    # 1. Attempt delivery via Resend HTTPS API (Port 443) if configured
+    if _send_via_resend_api(email, "🔐 SecureVote — Your OTP Verification Code", html, plain):
+        return True, "Delivered via HTTPS API"
+
+    # 2. Attempt delivery via direct SMTP
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = "🔐 SecureVote — Your OTP Verification Code"
         msg["From"] = f"SecureVote <{smtp_email}>"
         msg["To"] = email
-
-        plain = (
-            f"SecureVote Verification Code\n\n"
-            f"Your one-time verification code is: {otp}\n\n"
-            f"This code expires in 2 minutes. Do not share it with anyone."
-        )
-        html = f"""
-        <html>
-        <body style="font-family: 'Segoe UI', sans-serif; background: #0f0f23; color: #e0e0e0; padding: 40px;">
-            <div style="max-width: 480px; margin: auto; background: #1a1a2e; border-radius: 16px; padding: 40px; border: 1px solid #16213e;">
-                <h2 style="color: #7c3aed; margin-bottom: 8px;">🔐 SecureVote</h2>
-                <p style="color: #a0a0b8;">Your one-time verification code:</p>
-                <div style="font-size: 36px; font-weight: bold; color: #a78bfa; letter-spacing: 8px; text-align: center; padding: 24px; background: #16213e; border-radius: 12px; margin: 24px 0;">
-                    {otp}
-                </div>
-                <p style="color: #666; font-size: 13px;">This code expires in 2 minutes. Do not share it with anyone.</p>
-            </div>
-        </body>
-        </html>
-        """
         msg.attach(MIMEText(plain, "plain"))
         msg.attach(MIMEText(html, "html"))
 
@@ -1331,10 +1369,22 @@ def login():
     if ok:
         session["pending_email"] = email
         session["pending_voter_id"] = voter_id
+        session.pop("cloud_blocked_otp", None)
         masked = mask_email(email)
         return jsonify({
             "success": True,
             "message": f"OTP sent to {masked}. It expires in 2 minutes.",
+            "redirect": url_for("verify_otp")
+        })
+    elif any(term in err_detail for term in ("Network is unreachable", "Errno 101", "timed out", "ConnectionRefusedError", "110", "Connection timed out")):
+        # Render Free Tier firewall block detected!
+        session["pending_email"] = email
+        session["pending_voter_id"] = voter_id
+        session["cloud_blocked_otp"] = otp
+        print(f"[RENDER FREE TIER FIREWALL] Outbound SMTP blocked by cloud provider ({err_detail}). Verification code for {email} is: {otp}")
+        return jsonify({
+            "success": True,
+            "message": f"Render Free Tier firewall blocked SMTP. Your verification code is: {otp}",
             "redirect": url_for("verify_otp")
         })
     else:
@@ -1400,11 +1450,22 @@ def resend_otp():
 
     ok, err_detail = send_otp_email(email, otp)
     if ok:
+        session.pop("cloud_blocked_otp", None)
         masked = mask_email(email)
         expires_in, resend_in = otp_timer_seconds(created_at.isoformat(), expires_at)
         return jsonify({
             "success": True,
             "message": f"New OTP sent to {masked}. It expires in 2 minutes.",
+            "expires_in": expires_in,
+            "resend_in": resend_in
+        })
+    elif any(term in err_detail for term in ("Network is unreachable", "Errno 101", "timed out", "ConnectionRefusedError", "110", "Connection timed out")):
+        session["cloud_blocked_otp"] = otp
+        print(f"[RENDER FREE TIER FIREWALL] Outbound SMTP blocked on resend ({err_detail}). New verification code for {email} is: {otp}")
+        expires_in, resend_in = otp_timer_seconds(created_at.isoformat(), expires_at)
+        return jsonify({
+            "success": True,
+            "message": f"Render Free Tier blocked outbound SMTP. Your new verification code is: {otp}",
             "expires_in": expires_in,
             "resend_in": resend_in
         })
@@ -1436,12 +1497,14 @@ def verify_otp():
             otp_timer_seconds(record["created_at"], record["expires_at"])
             if record else (0, 0)
         )
+        cloud_blocked_otp = session.get("cloud_blocked_otp")
         return render_template(
             "verify_otp.html",
             email=email,
             masked_email=masked,
             otp_remaining_seconds=otp_remaining,
-            resend_remaining_seconds=resend_remaining
+            resend_remaining_seconds=resend_remaining,
+            cloud_blocked_otp=cloud_blocked_otp
         )
 
     data = request.get_json()
@@ -1513,6 +1576,7 @@ def verify_otp():
     conn.close()
 
     session["otp_verified"] = True
+    session.pop("cloud_blocked_otp", None)
     return jsonify({"success": True, "message": "OTP verified successfully!", "redirect": url_for("verify_face")})
 
 
