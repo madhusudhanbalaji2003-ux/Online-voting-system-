@@ -12,6 +12,7 @@ import secrets
 import smtplib
 import sqlite3
 import string
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
@@ -2268,9 +2269,28 @@ def main():
     else:
         print("  Gmail SMTP: DEV MODE (set SMTP_EMAIL & SMTP_PASSWORD in .env)")
     port = int(os.environ.get("PORT", 5000))
-    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1")
     print(f"  http://0.0.0.0:{port}")
     print("=" * 60 + "\n")
+
+    # In production on Linux / Render, launch high-performance Gunicorn WSGI server
+    is_prod_linux = sys.platform.startswith("linux") or os.environ.get("RENDER") is not None
+    if is_prod_linux:
+        try:
+            import subprocess
+            cmd = [
+                sys.executable, "-m", "gunicorn",
+                "--workers=1",
+                "--threads=4",
+                "--timeout=120",
+                "--bind", f"0.0.0.0:{port}",
+                "app:app"
+            ]
+            print(f"[Production] Launching Gunicorn WSGI server on port {port}...")
+            sys.exit(subprocess.call(cmd))
+        except Exception as _gerr:
+            print(f"[WSGI Fallback] Gunicorn failed ({_gerr}), falling back to app.run()")
+
+    debug_mode = os.environ.get("FLASK_DEBUG", "False").lower() in ("true", "1")
     app.run(debug=debug_mode, host="0.0.0.0", port=port)
 
 
