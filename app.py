@@ -121,18 +121,20 @@ def _send_smtp_message(msg) -> None:
         msg["From"] = smtp_email
 
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=15) as server:
+        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=12) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(smtp_email, smtp_password)
             server.send_message(msg)
-    except (OSError, smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected):
-        # Fallback to implicit SSL on port 465 if port 587 STARTTLS is blocked
+            print("[SMTP] Successfully delivered email via port 587 (STARTTLS).")
+    except Exception as _first_err:
+        print(f"[SMTP] Port 587 attempt failed ({_first_err}) — falling back to port 465 (SSL)...")
         with smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=15) as server:
             server.ehlo()
             server.login(smtp_email, smtp_password)
             server.send_message(msg)
+            print("[SMTP] Successfully delivered email via port 465 (SSL).")
 
 # Admin credentials
 ADMIN_USERNAME = "admin"
@@ -369,8 +371,9 @@ def send_otp_email(email, otp):
     """Send OTP via email using Gmail SMTP."""
     smtp_email, smtp_password = _get_smtp_credentials()
     if not smtp_email or not smtp_password:
-        print(f"[DEV MODE] OTP for {email}: {otp}")
-        return True  # Dev mode — skip email
+        print(f"[OTP WARNING] SMTP_EMAIL or SMTP_PASSWORD not set on server! Add them in Render Dashboard -> Environment.")
+        print(f"[DEV FALLBACK] Generated OTP for {email}: {otp}")
+        return True  # Dev fallback — skip email
 
     try:
         msg = MIMEMultipart("alternative")
