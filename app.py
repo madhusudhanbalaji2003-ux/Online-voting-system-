@@ -10,6 +10,7 @@ import io
 import os
 import secrets
 import smtplib
+import socket
 import sqlite3
 import string
 import sys
@@ -103,9 +104,11 @@ def favicon():
 # Email Configuration (Gmail SMTP)
 # Set these environment variables or modify directly
 # ──────────────────────────────────────────────
-def _normalize_smtp_password(password: str, server: str) -> str:
+def _normalize_smtp_password(password: str, server: str = "smtp.gmail.com") -> str:
     """Strip quotes/whitespace and remove grouping spaces from Gmail App Passwords."""
-    cleaned = password.strip()
+    if not password:
+        return ""
+    cleaned = password.strip().strip("'\"").strip()
     if server == "smtp.gmail.com":
         compact = cleaned.replace(" ", "")
         if len(compact) == 16:
@@ -139,8 +142,40 @@ OTP_EXPIRY_SECONDS = 120
 OTP_RESEND_COOLDOWN_SECONDS = 60
 
 
+class IPv4SMTP(smtplib.SMTP):
+    """Force IPv4 resolution for SMTP to avoid cloud IPv6 unreachable/timeout issues."""
+    def _get_socket(self, host, port, timeout):
+        for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            try:
+                s = socket.socket(af, socktype, proto)
+                s.settimeout(timeout)
+                s.connect(sa)
+                return s
+            except OSError:
+                if s:
+                    s.close()
+        return super()._get_socket(host, port, timeout)
+
+
+class IPv4SMTP_SSL(smtplib.SMTP_SSL):
+    """Force IPv4 resolution for SMTP_SSL to avoid cloud IPv6 unreachable/timeout issues."""
+    def _get_socket(self, host, port, timeout):
+        for res in socket.getaddrinfo(host, port, socket.AF_INET, socket.SOCK_STREAM):
+            af, socktype, proto, canonname, sa = res
+            try:
+                s = socket.socket(af, socktype, proto)
+                s.settimeout(timeout)
+                s.connect(sa)
+                return self.context.wrap_socket(s, server_hostname=self._host)
+            except OSError:
+                if s:
+                    s.close()
+        return super()._get_socket(host, port, timeout)
+
+
 def _send_smtp_message(msg) -> None:
-    """Send a MIME email via STARTTLS (587) with automatic SSL (465) fallback."""
+    """Send a MIME email via IPv4 STARTTLS (587) with automatic SSL (465) fallback."""
     smtp_email, smtp_password = _get_smtp_credentials()
     if not smtp_email or not smtp_password:
         raise RuntimeError("SMTP credentials are not configured.")
@@ -148,21 +183,35 @@ def _send_smtp_message(msg) -> None:
     if not msg["From"]:
         msg["From"] = smtp_email
 
+    recipient = msg["To"]
+    recipients = [r.strip() for r in recipient.split(",")] if recipient else None
+
+    # Attempt 1: Port 587 STARTTLS (IPv4 forced)
+    _first_err = None
     try:
-        with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=12) as server:
+        with IPv4SMTP(SMTP_SERVER, SMTP_PORT, timeout=12) as server:
             server.ehlo()
             server.starttls()
             server.ehlo()
             server.login(smtp_email, smtp_password)
-            server.send_message(msg)
+            server.send_message(msg, from_addr=smtp_email, to_addrs=recipients)
             print("[SMTP] Successfully delivered email via port 587 (STARTTLS).")
-    except Exception as _first_err:
-        print(f"[SMTP] Port 587 attempt failed ({_first_err}) — falling back to port 465 (SSL)...")
-        with smtplib.SMTP_SSL(SMTP_SERVER, 465, timeout=15) as server:
+            return
+    except Exception as err1:
+        _first_err = err1
+        print(f"[SMTP] Port 587 attempt failed ({err1}) — falling back to port 465 (SSL)...")
+
+    # Attempt 2: Port 465 SSL (IPv4 forced)
+    try:
+        with IPv4SMTP_SSL(SMTP_SERVER, 465, timeout=15) as server:
             server.ehlo()
             server.login(smtp_email, smtp_password)
-            server.send_message(msg)
+            server.send_message(msg, from_addr=smtp_email, to_addrs=recipients)
             print("[SMTP] Successfully delivered email via port 465 (SSL).")
+            return
+    except Exception as _second_err:
+        print(f"[SMTP] Port 465 attempt failed ({_second_err}).")
+        raise RuntimeError(f"SMTP delivery failed on both port 587 ({_first_err}) and port 465 ({_second_err})")
 
 # Admin credentials
 ADMIN_USERNAME = "admin"
@@ -414,13 +463,11 @@ def mask_email(email: str) -> str:
     return f"{visible}***@{domain}"
 
 
-def send_otp_email(email, otp):
-    """Send OTP via email using Gmail SMTP."""
+def send_otp_email(email, otp) -> Tuple[bool, str]:
+    """Send OTP via email using Gmail SMTP. Returns (success, detail_message)."""
     smtp_email, smtp_password = _get_smtp_credentials()
     if not smtp_email or not smtp_password:
-        print(f"[OTP WARNING] SMTP_EMAIL or SMTP_PASSWORD not set on server! Add them in Render Dashboard -> Environment.")
-        print(f"[DEV FALLBACK] Generated OTP for {email}: {otp}")
-        return True  # Dev fallback — skip email
+        return False, "SMTP credentials are not configured"
 
     try:
         msg = MIMEMultipart("alternative")
@@ -452,13 +499,15 @@ def send_otp_email(email, otp):
 
         _send_smtp_message(msg)
         print(f"[MAIL] OTP email sent to {email}")
-        return True
+        return True, "Delivered"
     except smtplib.SMTPAuthenticationError as e:
-        print(f"[MAIL ERROR] Gmail authentication failed: {e}. Check SMTP_EMAIL and 16-char Google App Password in .env.")
-        return False
+        err_msg = f"Gmail authentication failed: {e}. Check Google App Password."
+        print(f"[MAIL ERROR] {err_msg}")
+        return False, err_msg
     except Exception as e:
-        print(f"[MAIL ERROR] Email send error for {email}: {e}")
-        return False
+        err_msg = f"Email delivery error: {e}"
+        print(f"[MAIL ERROR] {err_msg}")
+        return False, err_msg
 
 
 def send_voting_start_notification(email, voter_name, election_title):
@@ -1278,7 +1327,8 @@ def login():
     conn.close()
 
     # Send OTP via Gmail SMTP — if sending fails, do NOT pretend it succeeded
-    if send_otp_email(email, otp):
+    ok, err_detail = send_otp_email(email, otp)
+    if ok:
         session["pending_email"] = email
         session["pending_voter_id"] = voter_id
         masked = mask_email(email)
@@ -1301,7 +1351,7 @@ def login():
             pass
         return jsonify({
             "success": False,
-            "message": "Failed to send OTP email. Please check your Gmail configuration or try again later."
+            "message": f"Failed to send OTP email: {err_detail}"
         }), 500
 
 
@@ -1348,7 +1398,8 @@ def resend_otp():
     conn.commit()
     conn.close()
 
-    if send_otp_email(email, otp):
+    ok, err_detail = send_otp_email(email, otp)
+    if ok:
         masked = mask_email(email)
         expires_in, resend_in = otp_timer_seconds(created_at.isoformat(), expires_at)
         return jsonify({
@@ -1360,7 +1411,7 @@ def resend_otp():
     else:
         return jsonify({
             "success": False,
-            "message": "Failed to resend OTP. Please check your Gmail configuration."
+            "message": f"Failed to resend OTP: {err_detail}"
         }), 500
 
 
