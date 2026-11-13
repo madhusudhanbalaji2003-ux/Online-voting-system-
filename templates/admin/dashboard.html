@@ -431,6 +431,117 @@
         {% endif %}
     </div>
 
+    <!-- ── Official Website Announcement & Live Broadcast Card ── -->
+    <div class="card" style="margin-top:2rem;">
+        <div class="card-header" style="margin-bottom:1rem;">
+            <h2>📢 Official Website Announcement</h2>
+            <p style="color:var(--text-secondary);font-size:0.85rem;margin-top:4px;">
+                Broadcast an official announcement message directly onto the website homepage banner in real time.
+                Visitors see this immediately without manual page refresh.
+            </p>
+        </div>
+
+        {% if election %}
+        <!-- Current Announcement Status -->
+        <div style="margin-bottom:1.25rem;padding:1rem 1.25rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.08);border-radius:12px;">
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em;font-weight:700;">
+                Current Website Banner Status:
+            </div>
+            {% if election['announcement'] %}
+            <div style="display:flex;align-items:center;gap:8px;color:#38bdf8;font-weight:700;font-size:0.9rem;">
+                <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#38bdf8;box-shadow:0 0 10px #38bdf8;"></span>
+                <span>Active Custom Announcement Broadcast:</span>
+            </div>
+            <div style="margin-top:8px;font-size:0.95rem;color:#f8fafc;background:rgba(56,189,248,0.1);border:1px solid rgba(56,189,248,0.3);border-radius:10px;padding:10px 14px;line-height:1.5;">
+                "{{ election['announcement'] }}"
+            </div>
+            {% else %}
+            <div style="display:flex;align-items:center;gap:8px;color:#10b981;font-weight:700;font-size:0.9rem;">
+                <span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:#10b981;box-shadow:0 0 10px #10b981;"></span>
+                <span>Automated Live Status Banner</span>
+            </div>
+            <div style="margin-top:6px;font-size:0.86rem;color:var(--text-secondary);line-height:1.5;">
+                Currently displaying automated status based on voting schedule. Entering custom text below will override the automatic message.
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Announcement Form -->
+        <form action="{{ url_for('admin_set_announcement') }}" method="POST">
+            <div class="form-group" style="margin-bottom:1rem;">
+                <label for="announcement_text" style="display:block;font-size:0.88rem;font-weight:600;color:var(--text-primary);margin-bottom:8px;">
+                    Custom Announcement Text:
+                </label>
+                <textarea id="announcement_text" name="announcement_text" rows="3" class="form-control"
+                          placeholder="e.g. 🗳️ Voting is officially OPEN! Cast your ballot before 6:00 PM today. Results will be published on the blockchain."
+                          style="width:100%;resize:vertical;border-radius:10px;background:rgba(15,23,42,0.7);border:1px solid rgba(255,255,255,0.15);color:#fff;padding:12px 14px;font-size:0.92rem;line-height:1.5;"
+                          oninput="updateAnnouncementPreview(this.value)">{{ election['announcement'] or '' }}</textarea>
+            </div>
+
+            <!-- Quick Template Chips -->
+            <div style="margin-bottom:1.25rem;">
+                <span style="font-size:0.75rem;font-weight:700;color:#a78bfa;text-transform:uppercase;letter-spacing:0.06em;display:block;margin-bottom:8px;">
+                    ⚡ Quick Announcement Templates:
+                </span>
+                <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                    <button type="button" class="vp-preset-btn" onclick="setAnnounceText('🗳️ Voting is officially OPEN for {{ election['title'] }}! All registered voters are invited to cast their ballot.')">
+                        🗳️ Polls Open
+                    </button>
+                    <button type="button" class="vp-preset-btn" onclick="setAnnounceText('⏳ Attention Voters: Only 1 HOUR remaining to cast your vote for {{ election['title'] }}! Polls close soon.')">
+                        ⏳ 1 Hour Left
+                    </button>
+                    <button type="button" class="vp-preset-btn" onclick="setAnnounceText('🔒 Voting has officially CONCLUDED for {{ election['title'] }}. Results are being verified on the blockchain and will be published shortly.')">
+                        🔒 Polls Closed
+                    </button>
+                    <button type="button" class="vp-preset-btn" onclick="setAnnounceText('📢 Notice: Voter registration and face verification are currently open. Please register your account early!')">
+                        📢 Registration Notice
+                    </button>
+                </div>
+            </div>
+
+            <!-- Live Preview -->
+            <div style="margin-bottom:1.5rem;padding:0.9rem 1.2rem;background:rgba(15,23,42,0.6);border:1px dashed rgba(56,189,248,0.3);border-radius:12px;">
+                <div style="font-size:0.74rem;font-weight:700;color:#38bdf8;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;">
+                    🖥️ Live Website Homepage Preview:
+                </div>
+                <div id="announcePreviewBox" style="font-size:0.92rem;color:#f1f5f9;font-weight:500;">
+                    {{ election['announcement'] or '🗳️ (Preview will show your announcement as it appears on the website homepage)' }}
+                </div>
+            </div>
+
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center;">
+                <button type="submit" name="action" value="save" class="btn btn-primary" style="background:linear-gradient(135deg,#0284c7,#2563eb);border:none;padding:0.75rem 1.6rem;font-weight:700;display:inline-flex;align-items:center;gap:8px;border-radius:10px;box-shadow:0 4px 14px rgba(37,99,235,0.35);cursor:pointer;">
+                    🚀 Publish Announcement to Website
+                </button>
+                {% if election['announcement'] %}
+                <button type="submit" name="action" value="clear" class="btn btn-outline" style="border-color:rgba(239,68,68,0.4);color:#f87171;padding:0.75rem 1.4rem;border-radius:10px;font-size:0.86rem;cursor:pointer;" onclick="return confirm('Clear custom announcement and restore automatic election status banner?');">
+                    🗑️ Clear Announcement
+                </button>
+                {% endif %}
+            </div>
+        </form>
+
+        <script>
+        function setAnnounceText(txt) {
+            var el = document.getElementById('announcement_text');
+            if (el) {
+                el.value = txt;
+                updateAnnouncementPreview(txt);
+                el.focus();
+            }
+        }
+        function updateAnnouncementPreview(txt) {
+            var preview = document.getElementById('announcePreviewBox');
+            if (preview) {
+                preview.textContent = txt && txt.trim() ? txt : '🗳️ (Preview will show your announcement as it appears on the website homepage)';
+            }
+        }
+        </script>
+        {% else %}
+        <p style="color:var(--text-muted);font-size:0.88rem;">No active election found.</p>
+        {% endif %}
+    </div>
+
 </div>
 
 {% endblock %}

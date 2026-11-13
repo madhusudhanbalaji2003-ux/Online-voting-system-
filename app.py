@@ -79,6 +79,26 @@ app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
 os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 os.makedirs(app.config["CANDIDATE_UPLOAD_FOLDER"], exist_ok=True)
 
+
+@app.after_request
+def add_no_cache_headers(response):
+    """Disable caching for dynamic HTML routes to prevent stale 304 page views."""
+    if response.content_type and "text/html" in response.content_type:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
+
+@app.route("/favicon.ico")
+def favicon():
+    """Serve favicon or return 204 to prevent 404 console errors."""
+    fav_path = os.path.join(app.root_path, "static", "favicon.ico")
+    if os.path.exists(fav_path):
+        return send_from_directory(os.path.join(app.root_path, "static"), "favicon.ico", mimetype="image/vnd.microsoft.icon")
+    return ("", 204)
+
+
 # ──────────────────────────────────────────────
 # Email Configuration (Gmail SMTP)
 # Set these environment variables or modify directly
@@ -266,6 +286,12 @@ def init_db():
 
     try:
         cursor.execute("ALTER TABLE elections ADD COLUMN client_tz_offset INTEGER DEFAULT -330")
+        conn.commit()
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("ALTER TABLE elections ADD COLUMN announcement TEXT")
         conn.commit()
     except Exception:
         pass
@@ -491,7 +517,7 @@ def _auto_notify_voting_start(election_id):
     print(f"[Scheduler] Voting-start notifications sent: {sent} ok, {failed} failed.")
 
 
-def get_election_time_context(election) -> Tuple[datetime, str]:
+def get_election_time_context(election, client_offset_override=None) -> Tuple[datetime, str]:
     """
     Return (current_now_in_election_tz, status) where status is:
     'not_set' | 'scheduled' | 'active' | 'ended'
@@ -507,11 +533,17 @@ def get_election_time_context(election) -> Tuple[datetime, str]:
         return datetime.now(), "not_set"
 
     tz_offset_min = -330  # Default to IST (UTC+5:30) if unset
-    try:
-        if "client_tz_offset" in election.keys() and election["client_tz_offset"] is not None:
-            tz_offset_min = int(election["client_tz_offset"])
-    except Exception:
-        pass
+    if client_offset_override is not None:
+        try:
+            tz_offset_min = int(client_offset_override)
+        except Exception:
+            pass
+    else:
+        try:
+            if "client_tz_offset" in election.keys() and election["client_tz_offset"] is not None:
+                tz_offset_min = int(election["client_tz_offset"])
+        except Exception:
+            pass
 
     # JavaScript getTimezoneOffset(): IST is -330 min, so client_tz = UTC - (-330) = UTC + 330 (+5:30)
     client_tz = timezone(timedelta(minutes=-tz_offset_min))
@@ -1016,6 +1048,19 @@ def index():
         else:
             voting_status = "active"
 
+    announcement_msg = ""
+    if election:
+        if "announcement" in election.keys() and election["announcement"]:
+            announcement_msg = election["announcement"]
+        elif voting_status == "active" and voting_end:
+            announcement_msg = f"🗳️ Voting is currently LIVE for '{election['title']}'! Polls close on {voting_end.replace('T', ' ')}."
+        elif voting_status == "scheduled" and voting_start:
+            announcement_msg = f"📢 Voting Scheduled: Polls for '{election['title']}' open on {voting_start.replace('T', ' ')}."
+        elif voting_status == "ended":
+            announcement_msg = f"🔒 Voting has concluded for '{election['title']}'. Results will be published by the administrator."
+        else:
+            announcement_msg = f"🗳️ '{election['title']}' is currently open for voting."
+
     total_blocks = len(blockchain.chain)
     latest_block = blockchain.get_latest_block()
 
@@ -1030,7 +1075,8 @@ def index():
                            latest_block=latest_block,
                            voting_start=voting_start,
                            voting_end=voting_end,
-                           voting_status=voting_status)
+                           voting_status=voting_status,
+                           announcement=announcement_msg)
 
 
 
@@ -1519,7 +1565,8 @@ def vote():
             "SELECT * FROM candidates WHERE election_id = ?", (election["id"],)
         ).fetchall()
         conn.close()
-        return render_template("vote.html", election=election, candidates=candidates, voter=voter, voting_end=voting_end if 'voting_end' in locals() or 'voting_end' in globals() else election.get("voting_end"))
+        ve_str = election["voting_end"] if "voting_end" in election.keys() else None
+        return render_template("vote.html", election=election, candidates=candidates, voter=voter, voting_end=ve_str)
 
     # Cast vote
     data = request.get_json()
@@ -1767,6 +1814,10 @@ def admin_dashboard():
         else:
             voting_status = "not_set"
 
+    announcement_text = ""
+    if election and "announcement" in election.keys() and election["announcement"]:
+        announcement_text = election["announcement"]
+
     conn.close()
     return render_template("admin/dashboard.html",
                            total_voters=total_voters,
@@ -1776,7 +1827,8 @@ def admin_dashboard():
                            chain_valid=chain_valid,
                            candidates=candidates,
                            vote_counts=vote_counts,
-                           voting_status=voting_status)
+                           voting_status=voting_status,
+                           announcement=announcement_text)
 
 
 @app.route("/admin/voters")
@@ -1926,6 +1978,32 @@ def admin_set_voting_period():
             "success"
         )
     # ─────────────────────────────────────────────────────────────────────────
+
+    conn.close()
+    return redirect(url_for("admin_dashboard"))
+
+
+@app.route("/admin/set_announcement", methods=["POST"])
+@admin_required
+def admin_set_announcement():
+    """Update or clear the public website announcement."""
+    conn = get_db()
+    election = conn.execute("SELECT * FROM elections WHERE is_active = 1 LIMIT 1").fetchone()
+    if not election:
+        flash("No active election found.", "danger")
+        conn.close()
+        return redirect(url_for("admin_dashboard"))
+
+    action = request.form.get("action", "save")
+    if action == "clear":
+        conn.execute("UPDATE elections SET announcement = NULL WHERE id = ?", (election["id"],))
+        conn.commit()
+        flash("Website announcement cleared. Default status banner will be displayed.", "warning")
+    else:
+        text = request.form.get("announcement_text", "").strip()
+        conn.execute("UPDATE elections SET announcement = ? WHERE id = ?", (text if text else None, election["id"]))
+        conn.commit()
+        flash("📢 Announcement updated and published to the website!", "success")
 
     conn.close()
     return redirect(url_for("admin_dashboard"))
@@ -2233,6 +2311,58 @@ def api_blockchain_status():
         "is_valid": blockchain.is_chain_valid(),
         "total_votes": blockchain.get_total_votes(),
         "latest_block_hash": blockchain.get_latest_block().hash
+    })
+
+
+@app.route("/api/election_status")
+def api_election_status():
+    """Live JSON endpoint for frontend to fetch real-time election state, schedule, and announcement."""
+    conn = get_db()
+    election = conn.execute("SELECT * FROM elections WHERE is_active = 1 LIMIT 1").fetchone()
+    if not election:
+        conn.close()
+        return jsonify({
+            "has_election": False,
+            "voting_status": "not_set",
+            "announcement": "No active election at this time."
+        })
+
+    vs = election["voting_start"] or ""
+    ve = election["voting_end"] or ""
+    tz_override = request.args.get("tz_offset", type=int)
+    now_client, voting_status = get_election_time_context(election, client_offset_override=tz_override)
+
+    total_candidates = conn.execute("SELECT COUNT(*) FROM candidates WHERE election_id = ?", (election["id"],)).fetchone()[0]
+    total_voters = conn.execute("SELECT COUNT(*) FROM voters").fetchone()[0]
+    total_votes = conn.execute("SELECT COUNT(*) FROM votes WHERE election_id = ?", (election["id"],)).fetchone()[0]
+    conn.close()
+
+    announcement_msg = ""
+    if "announcement" in election.keys() and election["announcement"]:
+        announcement_msg = election["announcement"]
+    elif voting_status == "active":
+        announcement_msg = f"🗳️ Voting is currently LIVE for '{election['title']}'! Polls close on {ve.replace('T', ' ')}."
+    elif voting_status == "scheduled":
+        announcement_msg = f"📢 Voting Scheduled: Polls for '{election['title']}' open on {vs.replace('T', ' ')}."
+    elif voting_status == "ended":
+        announcement_msg = f"🔒 Voting has officially concluded for '{election['title']}'. Results will be published by the administrator."
+    else:
+        announcement_msg = f"🗳️ '{election['title']}' is open for voting."
+
+    return jsonify({
+        "has_election": True,
+        "id": election["id"],
+        "title": election["title"],
+        "description": election["description"] or "",
+        "voting_start": vs,
+        "voting_end": ve,
+        "voting_status": voting_status,
+        "announcement": announcement_msg,
+        "results_visible": bool(election["results_visible"]),
+        "total_candidates": total_candidates,
+        "total_votes": total_votes,
+        "total_voters": total_voters,
+        "server_time": now_client.isoformat(timespec="seconds")
     })
 
 

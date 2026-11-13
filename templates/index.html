@@ -61,6 +61,27 @@
                 </a>
             </div>
 
+            <!-- ── Dynamic Live Announcement & Status Banner ── -->
+            <div id="liveAnnouncementBar" class="live-announcement-banner" style="max-width:860px;margin:0 auto 2.25rem auto;{% if not announcement %}display:none;{% endif %}">
+                <div class="lab-pill-wrap">
+                    <span class="lab-pill lab-pill--{{ voting_status }}" id="labBadge">
+                        <span class="lab-dot"></span>
+                        <span id="labBadgeText">
+                            {% if voting_status == 'active' %}LIVE NOW{% elif voting_status == 'scheduled' %}SCHEDULED{% elif voting_status == 'ended' %}CONCLUDED{% else %}OFFICIAL NOTICE{% endif %}
+                        </span>
+                    </span>
+                    <span class="lab-sync-pill" id="labSyncIndicator" title="Live real-time sync with election server">
+                        <svg class="lab-spin-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                        </svg>
+                        LIVE SYNC
+                    </span>
+                </div>
+                <div class="lab-text" id="labText">
+                    {{ announcement or '' }}
+                </div>
+            </div>
+
             <!-- ── Live Clock + Election Countdown Card ── -->
             <div class="home-clock-card" style="max-width:860px;margin:0 auto;">
                 <!-- Live clock (Spiked Rotating Analog Time System) -->
@@ -741,6 +762,86 @@
 
 })();
 
+/* ── Live Election Status & Real-Time Announcement Poller ── */
+(function() {
+  var currentVotingStatus = '{{ voting_status }}';
+  var currentVotingStart  = '{{ voting_start }}';
+  var currentVotingEnd    = '{{ voting_end }}';
+  var isFirstSync = true;
+
+  function updateAnnouncementUI(status, announcementText) {
+    var bar = document.getElementById('liveAnnouncementBar');
+    var labText = document.getElementById('labText');
+    var badge = document.getElementById('labBadge');
+    var badgeText = document.getElementById('labBadgeText');
+
+    if (!bar || !labText) return;
+
+    if (!announcementText || !announcementText.trim()) {
+      bar.style.display = 'none';
+      return;
+    }
+
+    bar.style.display = 'flex';
+    if (labText.textContent.trim() !== announcementText.trim()) {
+      labText.textContent = announcementText;
+      bar.classList.add('lab-pulse-highlight');
+      setTimeout(function() { bar.classList.remove('lab-pulse-highlight'); }, 1400);
+    }
+
+    if (badge && badgeText) {
+      badge.className = 'lab-pill lab-pill--' + (status || 'active');
+      if (status === 'active') badgeText.textContent = 'LIVE NOW';
+      else if (status === 'scheduled') badgeText.textContent = 'SCHEDULED';
+      else if (status === 'ended') badgeText.textContent = 'CONCLUDED';
+      else badgeText.textContent = 'OFFICIAL NOTICE';
+    }
+  }
+
+  async function fetchLiveElectionStatus() {
+    try {
+      var tzOffset = new Date().getTimezoneOffset();
+      var res = await fetch('/api/election_status?tz_offset=' + tzOffset + '&t=' + Date.now(), {
+        headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+      });
+      if (!res.ok) return;
+      var data = await res.json();
+      if (!data) return;
+
+      // Update announcement banner text & badge in real time
+      if (data.announcement) {
+        updateAnnouncementUI(data.voting_status, data.announcement);
+      }
+
+      // Check if voting status or schedule has changed since page load
+      if (!isFirstSync) {
+        var statusChanged = currentVotingStatus && data.voting_status && (data.voting_status !== currentVotingStatus);
+        var timeChanged = (data.voting_start && data.voting_start !== currentVotingStart) ||
+                          (data.voting_end && data.voting_end !== currentVotingEnd);
+
+        if (statusChanged || (timeChanged && (data.voting_status === 'active' || data.voting_status === 'scheduled'))) {
+          currentVotingStatus = data.voting_status;
+          currentVotingStart  = data.voting_start;
+          currentVotingEnd    = data.voting_end;
+
+          // Reload page to re-render countdown clocks, schedule info, and vote action buttons
+          setTimeout(function() {
+            window.location.reload();
+          }, 900);
+        }
+      } else {
+        isFirstSync = false;
+      }
+    } catch (e) {
+      // Background retry silently
+    }
+  }
+
+  // Poll server every 5 seconds; also fire initial check after 1.5 seconds
+  setInterval(fetchLiveElectionStatus, 5000);
+  setTimeout(fetchLiveElectionStatus, 1500);
+})();
+
 /* ── Section Camera & Photo Capture Logic ── */
 var secStream = null;
 var secCapturedImage = null;
@@ -947,6 +1048,121 @@ async function handleSectionLogin(e) {
 #heroTitle.golden-glow {
     opacity: 1;
     animation: heroGoldenGlow 2.4s ease-in-out infinite;
+}
+
+/* ── Live Announcement & Broadcast Banner ── */
+.live-announcement-banner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 1.1rem 1.6rem;
+    background: linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(30, 41, 59, 0.8) 100%);
+    border: 1px solid rgba(56, 189, 248, 0.35);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 20px rgba(56, 189, 248, 0.15);
+    backdrop-filter: blur(12px);
+    transition: all 0.35s ease;
+    text-align: center;
+}
+
+.live-announcement-banner.lab-pulse-highlight {
+    animation: labFlash 1.4s ease-in-out;
+}
+
+@keyframes labFlash {
+    0%, 100% { border-color: rgba(56, 189, 248, 0.35); box-shadow: 0 0 20px rgba(56, 189, 248, 0.15); }
+    50% { border-color: #38bdf8; box-shadow: 0 0 38px rgba(56, 189, 248, 0.65); transform: scale(1.015); }
+}
+
+.lab-pill-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.lab-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 14px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.lab-pill--active {
+    background: rgba(16, 185, 129, 0.18);
+    color: #10b981;
+    border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.lab-pill--scheduled {
+    background: rgba(245, 158, 11, 0.18);
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.lab-pill--ended {
+    background: rgba(239, 68, 68, 0.18);
+    color: #f87171;
+    border: 1px solid rgba(239, 68, 68, 0.45);
+}
+
+.lab-pill--not_set, .lab-pill--general {
+    background: rgba(56, 189, 248, 0.18);
+    color: #38bdf8;
+    border: 1px solid rgba(56, 189, 248, 0.45);
+}
+
+.lab-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    display: inline-block;
+    box-shadow: 0 0 8px currentColor;
+    animation: labDotPulse 1.5s infinite;
+}
+
+@keyframes labDotPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+.lab-sync-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 3px 10px;
+    border-radius: 12px;
+}
+
+.lab-spin-icon {
+    animation: labSpin 8s linear infinite;
+}
+
+@keyframes labSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.lab-text {
+    font-size: 1.05rem;
+    font-weight: 500;
+    color: #f8fafc;
+    line-height: 1.5;
+    max-width: 760px;
+    letter-spacing: 0.01em;
 }
 </style>
 
