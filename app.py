@@ -57,7 +57,7 @@ from apscheduler.triggers.date import DateTrigger
 
 import numpy as np
 from flask import (Flask, flash, jsonify, redirect, render_template, request,
-                   session, url_for)
+                   send_from_directory, session, url_for)
 
 from blockchain import Blockchain
 from face_utils import (analyze_liveness_frames, compare_faces,
