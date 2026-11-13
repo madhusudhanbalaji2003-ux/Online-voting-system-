@@ -53,12 +53,29 @@ except Exception as _e:
     print(f"[face_utils] YuNet load failed ({_e}) — using Haar Cascade fallback.")
 
 # ── Haar Cascade (fallback) ───────────────────────────────────────────────────
-_haar_xml = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-_haar: "cv2.CascadeClassifier" = cv2.CascadeClassifier(_haar_xml)
-if _haar.empty():
-    print("[face_utils] WARNING: Haar Cascade could not be loaded.")
-else:
-    print("[face_utils] Haar Cascade fallback ready.")
+_haar = None
+try:
+    _classifier_cls = getattr(cv2, "CascadeClassifier", None)
+    if _classifier_cls is None and hasattr(cv2, "objdetect"):
+        _classifier_cls = getattr(cv2.objdetect, "CascadeClassifier", None)
+
+    if _classifier_cls is not None:
+        _haar_dir = getattr(getattr(cv2, "data", None), "haarcascades", "")
+        _haar_xml = os.path.join(_haar_dir, "haarcascade_frontalface_default.xml") if _haar_dir else ""
+        if _haar_xml and os.path.isfile(_haar_xml):
+            _haar = _classifier_cls(_haar_xml)
+            if _haar.empty():
+                print("[face_utils] WARNING: Haar Cascade could not be loaded.")
+                _haar = None
+            else:
+                print("[face_utils] Haar Cascade fallback ready.")
+        else:
+            print("[face_utils] Haar Cascade XML not found; using YuNet primary.")
+    else:
+        print("[face_utils] CascadeClassifier not available in cv2 build; using YuNet primary.")
+except Exception as _e:
+    print(f"[face_utils] Haar Cascade setup skipped ({_e}) — YuNet is primary.")
+    _haar = None
 
 # ── SFace recognizer (128-d face embedding) ───────────────────────────────────
 recognizer: "cv2.FaceRecognizerSF | None" = None
@@ -172,18 +189,21 @@ def _haar_to_yunet_row(x: int, y: int, w: int, h: int) -> np.ndarray:
 
 def _haar_detect(bgr: np.ndarray):
     """Run Haar Cascade fallback on histogram-equalised grayscale."""
-    if _haar.empty():
+    if _haar is None:
         return None
     try:
+        if _haar.empty():
+            return None
         gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
         gray_eq = cv2.equalizeHist(gray)
         with _det_lock:
+            flags = getattr(cv2, "CASCADE_SCALE_IMAGE", 2)
             faces = _haar.detectMultiScale(
                 gray_eq,
                 scaleFactor=1.08,
                 minNeighbors=3,
                 minSize=(30, 30),
-                flags=cv2.CASCADE_SCALE_IMAGE
+                flags=flags
             )
         if len(faces) == 0:
             return None
