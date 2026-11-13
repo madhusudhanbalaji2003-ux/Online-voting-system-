@@ -8,6 +8,6 @@ services:
       - key: PYTHON_VERSION
         value: 3.11.9
       - key: SMTP_EMAIL
-        sync: false
+        value: 4mn24ci403@gmail.com
       - key: SMTP_PASSWORD
-        sync: false
+        value: tsyy zolr dyea ncfc

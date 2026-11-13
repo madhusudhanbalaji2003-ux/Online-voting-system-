@@ -113,14 +113,22 @@ def _normalize_smtp_password(password: str, server: str) -> str:
     return cleaned
 
 
+DEFAULT_SMTP_EMAIL = "4mn24ci403@gmail.com"
+DEFAULT_SMTP_PASSWORD = "tsyy zolr dyea ncfc"
+
+
 def _get_smtp_credentials() -> Tuple[str, str]:
-    """Return configured (smtp_email, smtp_password), reloading .env if empty."""
+    """Return configured (smtp_email, smtp_password) with env and default fallback."""
     email_val = os.environ.get("SMTP_EMAIL", "").strip()
     pass_val = _normalize_smtp_password(os.environ.get("SMTP_PASSWORD", ""), SMTP_SERVER)
     if not email_val or not pass_val:
         _load_env_file()
-        email_val = os.environ.get("SMTP_EMAIL", "").strip()
-        pass_val = _normalize_smtp_password(os.environ.get("SMTP_PASSWORD", ""), SMTP_SERVER)
+        email_val = os.environ.get("SMTP_EMAIL", "").strip() or DEFAULT_SMTP_EMAIL
+        pass_val = _normalize_smtp_password(os.environ.get("SMTP_PASSWORD", "") or DEFAULT_SMTP_PASSWORD, SMTP_SERVER)
+    if not email_val:
+        email_val = DEFAULT_SMTP_EMAIL
+    if not pass_val:
+        pass_val = _normalize_smtp_password(DEFAULT_SMTP_PASSWORD, SMTP_SERVER)
     return email_val, pass_val
 
 
@@ -343,6 +351,13 @@ def init_db():
             except Exception:
                 pass  # Already exists
     # ─────────────────────────────────────────────────────────────────────────
+
+    # Purge stale/used OTP records on startup to avoid timezone lockouts
+    try:
+        cursor.execute("DELETE FROM otps WHERE used = 1")
+        conn.commit()
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()
@@ -1224,21 +1239,23 @@ def login():
 
     # ── Rate limiting: enforce the resend cooldown ────────────────────────────
     last_otp = conn.execute(
-        "SELECT created_at FROM otps WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+        "SELECT created_at FROM otps WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1",
         (email,)
     ).fetchone()
     if last_otp:
-        last_sent = datetime.fromisoformat(last_otp["created_at"])
-        seconds_since = (
-            datetime.now() - last_sent
-        ).total_seconds()
-        if seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
-            conn.close()
-            wait = max(1, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since))
-            return jsonify({
-                "success": False,
-                "message": f"Please wait {wait} second(s) before requesting a new OTP."
-            }), 429
+        try:
+            last_sent = datetime.fromisoformat(last_otp["created_at"])
+            seconds_since = (datetime.now() - last_sent).total_seconds()
+            # Guard against negative seconds_since (e.g. server UTC vs client IST timezone difference)
+            if 0 <= seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
+                conn.close()
+                wait = max(1, min(OTP_RESEND_COOLDOWN_SECONDS, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since)))
+                return jsonify({
+                    "success": False,
+                    "message": f"Please wait {wait} second(s) before requesting a new OTP."
+                }), 429
+        except Exception:
+            pass
     # ─────────────────────────────────────────────────────────────────────────
 
     # Generate a cryptographically secure OTP and store its hash (never plaintext)
@@ -1299,22 +1316,23 @@ def resend_otp():
 
     # Enforce the resend cooldown
     last_otp = conn.execute(
-        "SELECT created_at FROM otps WHERE email = ? ORDER BY created_at DESC LIMIT 1",
+        "SELECT created_at FROM otps WHERE email = ? AND used = 0 ORDER BY id DESC LIMIT 1",
         (email,)
     ).fetchone()
     if last_otp:
-        last_sent = datetime.fromisoformat(last_otp["created_at"])
-        seconds_since = (
-            datetime.now() - last_sent
-        ).total_seconds()
-        if seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
-            conn.close()
-            wait = max(1, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since))
-            return jsonify({
-                "success": False,
-                "message": f"Please wait {wait} second(s) before requesting a new OTP.",
-                "wait": wait
-            }), 429
+        try:
+            last_sent = datetime.fromisoformat(last_otp["created_at"])
+            seconds_since = (datetime.now() - last_sent).total_seconds()
+            if 0 <= seconds_since < OTP_RESEND_COOLDOWN_SECONDS:
+                conn.close()
+                wait = max(1, min(OTP_RESEND_COOLDOWN_SECONDS, ceil(OTP_RESEND_COOLDOWN_SECONDS - seconds_since)))
+                return jsonify({
+                    "success": False,
+                    "message": f"Please wait {wait} second(s) before requesting a new OTP.",
+                    "wait": wait
+                }), 429
+        except Exception:
+            pass
 
     # Generate new OTP, invalidate old ones
     otp = generate_otp()
