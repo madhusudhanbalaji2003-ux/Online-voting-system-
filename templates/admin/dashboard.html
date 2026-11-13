@@ -304,23 +304,23 @@
         </div>
 
         {% if election %}
-        <!-- Current status badge -->
-        <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem;">
+        <!-- Current status badge and timezone indicator -->
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:1.25rem;">
             {% if voting_status == 'active' %}
-            <span id="vs-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);padding:4px 14px;border-radius:20px;font-size:0.82rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
+            <span id="vs-badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.4);padding:5px 16px;border-radius:20px;font-size:0.85rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;">
                 <span class="vs-pulse" style="width:8px;height:8px;border-radius:50%;background:#10b981;display:inline-block;animation:pulse 1.2s infinite;"></span>
                 LIVE — Voting Active
             </span>
             {% elif voting_status == 'scheduled' %}
-            <span id="vs-badge" style="background:rgba(245,158,11,0.13);color:#f59e0b;border:1px solid rgba(245,158,11,0.4);padding:4px 14px;border-radius:20px;font-size:0.82rem;font-weight:700;">
+            <span id="vs-badge" style="background:rgba(245,158,11,0.13);color:#f59e0b;border:1px solid rgba(245,158,11,0.4);padding:5px 16px;border-radius:20px;font-size:0.85rem;font-weight:700;">
                 ⏳ Scheduled — Not Started Yet
             </span>
             {% elif voting_status == 'ended' %}
-            <span id="vs-badge" style="background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:4px 14px;border-radius:20px;font-size:0.82rem;font-weight:700;">
+            <span id="vs-badge" style="background:rgba(239,68,68,0.12);color:#f87171;border:1px solid rgba(239,68,68,0.3);padding:5px 16px;border-radius:20px;font-size:0.85rem;font-weight:700;">
                 🔴 Voting Period Ended
             </span>
             {% else %}
-            <span id="vs-badge" style="background:rgba(107,114,128,0.12);color:#9ca3af;border:1px solid rgba(107,114,128,0.3);padding:4px 14px;border-radius:20px;font-size:0.82rem;font-weight:700;">
+            <span id="vs-badge" style="background:rgba(107,114,128,0.12);color:#9ca3af;border:1px solid rgba(107,114,128,0.3);padding:5px 16px;border-radius:20px;font-size:0.85rem;font-weight:700;">
                 ⚪ No Restriction Set
             </span>
             {% endif %}
@@ -330,11 +330,28 @@
                 {{ election['voting_start'][:16].replace('T',' ') }} &rarr; {{ election['voting_end'][:16].replace('T',' ') }}
             </span>
             {% endif %}
+
+            <span id="tz-pill" style="margin-left:auto;color:#a78bfa;font-size:0.8rem;background:rgba(124,58,237,0.12);padding:4px 12px;border-radius:12px;border:1px solid rgba(124,58,237,0.25);">
+                🌐 Syncing timezone...
+            </span>
+        </div>
+
+        <!-- Instant Switch Controls -->
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;margin-bottom:1.5rem;padding:1rem;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;">
+            <button type="button" onclick="quickAction('go_live')"
+                    style="background:linear-gradient(135deg,#10b981,#059669);color:#ffffff;border:none;padding:0.7rem 1.3rem;border-radius:10px;font-size:0.86rem;font-weight:700;display:inline-flex;align-items:center;gap:6px;cursor:pointer;box-shadow:0 4px 12px rgba(16,185,129,0.3);transition:transform 0.15s ease;">
+                ⚡ Switch to LIVE Now (Open Voting)
+            </button>
+            <button type="button" onclick="quickAction('end_now')"
+                    style="background:rgba(239,68,68,0.12);border:1px solid rgba(239,68,68,0.4);color:#f87171;padding:0.7rem 1.3rem;border-radius:10px;font-size:0.86rem;font-weight:600;display:inline-flex;align-items:center;gap:6px;cursor:pointer;transition:transform 0.15s ease;">
+                🛑 End Voting Now (Close Polls)
+            </button>
         </div>
 
         <!-- Set period form -->
         <form action="{{ url_for('admin_set_voting_period') }}" method="POST" id="votingPeriodForm" class="vp-card-body">
-            <input type="hidden" name="action" value="set">
+            <input type="hidden" name="action" id="vpFormAction" value="set">
+            <input type="hidden" name="client_tz_offset" id="client_tz_offset" value="-330">
 
             <!-- Presets Bar -->
             <div class="vp-presets-bar">
@@ -433,16 +450,35 @@
   function confirmForm(form) {
     return confirm(form.dataset.confirm || 'Are you sure?');
   }
+  function quickAction(actionName) {
+    var form = document.getElementById('votingPeriodForm');
+    if (!form) return;
+    if (actionName === 'end_now' && !confirm('Are you sure you want to end voting now? Polls will close immediately.')) {
+      return;
+    }
+    document.getElementById('vpFormAction').value = actionName;
+    document.getElementById('client_tz_offset').value = new Date().getTimezoneOffset();
+    document.getElementById('voting_start').required = false;
+    document.getElementById('voting_end').required = false;
+    form.submit();
+  }
+
   function clearPeriod() {
     if (!confirm('Clear the voting period? Voting will become unrestricted.')) return;
     var form = document.getElementById('votingPeriodForm');
-    form.querySelector('[name="action"]').value = 'clear';
+    document.getElementById('vpFormAction').value = 'clear';
+    document.getElementById('client_tz_offset').value = new Date().getTimezoneOffset();
+    document.getElementById('voting_start').required = false;
+    document.getElementById('voting_end').required = false;
     document.getElementById('voting_start').value = '';
     document.getElementById('voting_end').value = '';
     form.submit();
   }
   document.getElementById('votingPeriodForm') &&
     document.getElementById('votingPeriodForm').addEventListener('submit', function(e) {
+      document.getElementById('client_tz_offset').value = new Date().getTimezoneOffset();
+      var act = document.getElementById('vpFormAction').value;
+      if (act !== 'set') return;
       var s  = document.getElementById('voting_start').value;
       var en = document.getElementById('voting_end').value;
       if (!s || !en) {
@@ -559,8 +595,23 @@
     vpUpdatePreview();
   }
 
-  // Initialize previews on page load
+  // Initialize previews and timezone on page load
   document.addEventListener('DOMContentLoaded', function() {
+    var tzOffset = new Date().getTimezoneOffset();
+    var tzInput = document.getElementById('client_tz_offset');
+    if (tzInput) tzInput.value = tzOffset;
+
+    var tzPill = document.getElementById('tz-pill');
+    if (tzPill) {
+      try {
+        var userTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Local';
+        var nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+        tzPill.textContent = '🌐 ' + userTz + ' (Now: ' + nowStr + ')';
+      } catch (e) {
+        tzPill.textContent = '🌐 Local Timezone Synced';
+      }
+    }
+
     var sInput = document.getElementById('voting_start');
     var eInput = document.getElementById('voting_end');
     if (sInput && (!sInput.value || !eInput.value)) {

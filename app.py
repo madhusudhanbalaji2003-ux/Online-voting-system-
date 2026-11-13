@@ -256,13 +256,19 @@ def init_db():
     except Exception:
         pass  # Column already exists
 
-    # Migrate: add voting_start / voting_end columns for time-period control
+    # Migrate: add voting_start / voting_end / client_tz_offset columns for time-period control
     for col in ("voting_start", "voting_end"):
         try:
             cursor.execute(f"ALTER TABLE elections ADD COLUMN {col} TEXT")
             conn.commit()
         except Exception:
             pass  # Column already exists
+
+    try:
+        cursor.execute("ALTER TABLE elections ADD COLUMN client_tz_offset INTEGER DEFAULT -330")
+        conn.commit()
+    except Exception:
+        pass
 
     # Create allowed_voters whitelist table (CSV import)
     cursor.executescript("""
@@ -485,22 +491,64 @@ def _auto_notify_voting_start(election_id):
     print(f"[Scheduler] Voting-start notifications sent: {sent} ok, {failed} failed.")
 
 
-def schedule_voting_start_job(election_id, start_dt):
+def get_election_time_context(election) -> Tuple[datetime, str]:
+    """
+    Return (current_now_in_election_tz, status) where status is:
+    'not_set' | 'scheduled' | 'active' | 'ended'
+    
+    Resolves cloud server timezone offsets (e.g. Render UTC vs voter's local IST).
+    """
+    if not election:
+        return datetime.now(), "not_set"
+
+    vs = election["voting_start"]
+    ve = election["voting_end"]
+    if not vs or not ve:
+        return datetime.now(), "not_set"
+
+    tz_offset_min = -330  # Default to IST (UTC+5:30) if unset
+    try:
+        if "client_tz_offset" in election.keys() and election["client_tz_offset"] is not None:
+            tz_offset_min = int(election["client_tz_offset"])
+    except Exception:
+        pass
+
+    # JavaScript getTimezoneOffset(): IST is -330 min, so client_tz = UTC - (-330) = UTC + 330 (+5:30)
+    client_tz = timezone(timedelta(minutes=-tz_offset_min))
+    current_now = datetime.now(timezone.utc).astimezone(client_tz).replace(tzinfo=None)
+
+    try:
+        start_dt = datetime.fromisoformat(vs)
+        end_dt   = datetime.fromisoformat(ve)
+    except Exception:
+        return current_now, "not_set"
+
+    if current_now < start_dt:
+        return current_now, "scheduled"
+    elif current_now > end_dt:
+        return current_now, "ended"
+    else:
+        return current_now, "active"
+
+
+def schedule_voting_start_job(election_id, start_dt, tz_offset_min=-330):
     """Schedule (or re-schedule) the auto-notify job for this election."""
     job_id = f"voting_start_{election_id}"
-    # Remove existing job if any
     if _scheduler.get_job(job_id):
         _scheduler.remove_job(job_id)
-    # Only schedule if start_dt is in the future
-    if start_dt > datetime.now():
+
+    client_tz = timezone(timedelta(minutes=-tz_offset_min))
+    now_client = datetime.now(timezone.utc).astimezone(client_tz).replace(tzinfo=None)
+    if start_dt > now_client:
+        run_date = start_dt.replace(tzinfo=client_tz)
         _scheduler.add_job(
             _auto_notify_voting_start,
-            trigger=DateTrigger(run_date=start_dt),
+            trigger=DateTrigger(run_date=run_date),
             id=job_id,
             args=[election_id],
             replace_existing=True
         )
-        print(f"[Scheduler] Voting-start notification scheduled for {start_dt.isoformat()}")
+        print(f"[Scheduler] Voting-start notification scheduled for {start_dt.isoformat()} ({client_tz})")
     else:
         print(f"[Scheduler] start_dt is in the past — skipping auto-notify scheduling.")
 
@@ -964,15 +1012,9 @@ def index():
         if vs and ve:
             voting_start = vs
             voting_end   = ve
-            now = datetime.now()
-            start_dt = datetime.fromisoformat(vs)
-            end_dt   = datetime.fromisoformat(ve)
-            if now < start_dt:
-                voting_status = "scheduled"
-            elif now > end_dt:
-                voting_status = "ended"
-            else:
-                voting_status = "active"
+            _, voting_status = get_election_time_context(election)
+        else:
+            voting_status = "active"
 
     total_blocks = len(blockchain.chain)
     latest_block = blockchain.get_latest_block()
@@ -1458,24 +1500,19 @@ def vote():
             return redirect(url_for("index"))
 
         # ── Enforce voting time window ───────────────────────────────────────
-        now = datetime.now()
-        voting_start = election["voting_start"]
-        voting_end = election["voting_end"]
-        if voting_start and voting_end:
-            start_dt = datetime.fromisoformat(voting_start)
-            end_dt   = datetime.fromisoformat(voting_end)
-            if now < start_dt:
-                conn.close()
-                return redirect(url_for("voting_closed",
-                                        reason="not_started",
-                                        start=voting_start,
-                                        end=voting_end))
-            if now > end_dt:
-                conn.close()
-                return redirect(url_for("voting_closed",
-                                        reason="ended",
-                                        start=voting_start,
-                                        end=voting_end))
+        _, v_status = get_election_time_context(election)
+        if v_status == "scheduled":
+            conn.close()
+            return redirect(url_for("voting_closed",
+                                    reason="not_started",
+                                    start=election["voting_start"],
+                                    end=election["voting_end"]))
+        if v_status == "ended":
+            conn.close()
+            return redirect(url_for("voting_closed",
+                                    reason="ended",
+                                    start=election["voting_start"],
+                                    end=election["voting_end"]))
         # ─────────────────────────────────────────────────────────────────────
 
         candidates = conn.execute(
@@ -1506,18 +1543,13 @@ def vote():
         return jsonify({"success": False, "message": "Election is not active."}), 400
 
     # ── Enforce voting time window on POST too ───────────────────────────────
-    now = datetime.now()
-    voting_start = election["voting_start"]
-    voting_end   = election["voting_end"]
-    if voting_start and voting_end:
-        start_dt = datetime.fromisoformat(voting_start)
-        end_dt   = datetime.fromisoformat(voting_end)
-        if now < start_dt:
-            conn.close()
-            return jsonify({"success": False, "message": "Voting has not started yet."}), 403
-        if now > end_dt:
-            conn.close()
-            return jsonify({"success": False, "message": "The voting period has ended."}), 403
+    _, v_status_post = get_election_time_context(election)
+    if v_status_post == "scheduled":
+        conn.close()
+        return jsonify({"success": False, "message": "Voting has not started yet."}), 403
+    if v_status_post == "ended":
+        conn.close()
+        return jsonify({"success": False, "message": "The voting period has ended."}), 403
     # ─────────────────────────────────────────────────────────────────────────
 
     # Add vote to blockchain
@@ -1720,7 +1752,6 @@ def admin_dashboard():
 
     candidates = []
     vote_counts = {}
-    now = datetime.now()
     voting_status = "not_set"  # not_set | scheduled | active | ended
 
     if election:
@@ -1732,14 +1763,9 @@ def admin_dashboard():
         vs = election["voting_start"]
         ve = election["voting_end"]
         if vs and ve:
-            start_dt = datetime.fromisoformat(vs)
-            end_dt   = datetime.fromisoformat(ve)
-            if now < start_dt:
-                voting_status = "scheduled"
-            elif now > end_dt:
-                voting_status = "ended"
-            else:
-                voting_status = "active"
+            _, voting_status = get_election_time_context(election)
+        else:
+            voting_status = "not_set"
 
     conn.close()
     return render_template("admin/dashboard.html",
@@ -1803,14 +1829,47 @@ def admin_set_voting_period():
         return redirect(url_for("admin_dashboard"))
 
     action = request.form.get("action", "set")
+    try:
+        tz_offset_min = int(request.form.get("client_tz_offset", -330))
+    except Exception:
+        tz_offset_min = -330
+    client_tz = timezone(timedelta(minutes=-tz_offset_min))
+    now_client = datetime.now(timezone.utc).astimezone(client_tz).replace(tzinfo=None)
+
     if action == "clear":
         conn.execute(
-            "UPDATE elections SET voting_start = NULL, voting_end = NULL WHERE id = ?",
-            (election["id"],)
+            "UPDATE elections SET voting_start = NULL, voting_end = NULL, client_tz_offset = ? WHERE id = ?",
+            (tz_offset_min, election["id"])
         )
         conn.commit()
         conn.close()
-        flash("Voting time period cleared — voting is now unrestricted.", "warning")
+        flash("Voting time period cleared — voting is now UNRESTRICTED (anyone can vote anytime).", "warning")
+        return redirect(url_for("admin_dashboard"))
+
+    if action == "go_live":
+        # Immediately open voting for 24 hours from right now in client timezone
+        start_dt = now_client - timedelta(minutes=2)
+        end_dt   = now_client + timedelta(hours=24)
+        conn.execute(
+            "UPDATE elections SET voting_start = ?, voting_end = ?, client_tz_offset = ? WHERE id = ?",
+            (start_dt.isoformat(timespec="minutes"), end_dt.isoformat(timespec="minutes"), tz_offset_min, election["id"])
+        )
+        conn.commit()
+        conn.close()
+        flash(f"⚡ Voting has been switched to LIVE immediately! (Open until {end_dt.strftime('%d %b %Y %H:%M')})", "success")
+        return redirect(url_for("admin_dashboard"))
+
+    if action == "end_now":
+        # Immediately end voting (set end to 1 minute in the past)
+        start_val = election["voting_start"] or (now_client - timedelta(hours=1)).isoformat(timespec="minutes")
+        end_val   = (now_client - timedelta(minutes=1)).isoformat(timespec="minutes")
+        conn.execute(
+            "UPDATE elections SET voting_start = ?, voting_end = ?, client_tz_offset = ? WHERE id = ?",
+            (start_val, end_val, tz_offset_min, election["id"])
+        )
+        conn.commit()
+        conn.close()
+        flash("🛑 Voting officially CLOSED. The election has concluded and polls are locked.", "warning")
         return redirect(url_for("admin_dashboard"))
 
     voting_start = request.form.get("voting_start", "").strip()
@@ -1835,40 +1894,35 @@ def admin_set_voting_period():
         return redirect(url_for("admin_dashboard"))
 
     conn.execute(
-        "UPDATE elections SET voting_start = ?, voting_end = ? WHERE id = ?",
-        (start_dt.isoformat(timespec="minutes"), end_dt.isoformat(timespec="minutes"), election["id"])
+        "UPDATE elections SET voting_start = ?, voting_end = ?, client_tz_offset = ? WHERE id = ?",
+        (start_dt.isoformat(timespec="minutes"), end_dt.isoformat(timespec="minutes"), tz_offset_min, election["id"])
     )
     conn.commit()
 
-    # ── Always schedule the auto-notify job for voting start ─────────────────
-    schedule_voting_start_job(election["id"], start_dt)
+    # ── Schedule auto-notify job for voting start ─────────────────────────────
+    schedule_voting_start_job(election["id"], start_dt, tz_offset_min)
     # ─────────────────────────────────────────────────────────────────────────
 
-    # ── Optionally send announcement (schedule) emails immediately ───────────
+    # ── Optionally send announcement emails in background ────────────────────
     notify = request.form.get("notify_voters", "")
-    sent_count = 0
-    failed_count = 0
     if notify == "1":
         voters = conn.execute("SELECT name, email FROM voters").fetchall()
         election_title = election["title"]
-        for v in voters:
-            ok = send_announcement_email(v["email"], v["name"], election_title, start_dt, end_dt)
-            if ok:
-                sent_count += 1
-            else:
-                failed_count += 1
-        if voters:
-            flash(
-                f"Voting period set & announcements sent to {sent_count} voter(s)" +
-                (f" ({failed_count} failed)." if failed_count else "."),
-                "success"
-            )
-        else:
-            flash("Voting period set. No registered voters found to notify.", "warning")
+        import threading
+        def _bg_notify(vlist, title, s_dt, e_dt):
+            for v in vlist:
+                send_announcement_email(v["email"], v["name"], title, s_dt, e_dt)
+        threading.Thread(target=_bg_notify, args=(voters, election_title, start_dt, end_dt), daemon=True).start()
+        flash(f"Voting period set! Announcement emails are being sent to {len(voters)} voter(s).", "success")
     else:
+        if now_client < start_dt:
+            st_text = "Scheduled — Opens at " + start_dt.strftime('%d %b %Y %H:%M')
+        elif now_client > end_dt:
+            st_text = "Ended"
+        else:
+            st_text = "LIVE NOW"
         flash(
-            f"Voting period set: {start_dt.strftime('%d %b %Y %H:%M')} → {end_dt.strftime('%d %b %Y %H:%M')}. "
-            f"Auto-notification scheduled for voting start.",
+            f"Voting period updated: {start_dt.strftime('%d %b %Y %H:%M')} → {end_dt.strftime('%d %b %Y %H:%M')} ({st_text}).",
             "success"
         )
     # ─────────────────────────────────────────────────────────────────────────
